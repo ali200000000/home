@@ -26,6 +26,7 @@ const defaults: Recipe[] = [
 const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 const monthShort = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'];
 const colors = ['#b5c5e8', '#ffb28f', '#aec8fb', '#eca9c4', '#c9b99f', '#b4b6c2'];
+const BrandMark = () => <span className="brandmark" aria-hidden="true"><svg viewBox="0 0 32 32" focusable="false"><path d="M25.5 15.8c0-6.1-4.5-10.3-10-10.3-5.6 0-10 4.2-10 9.2 0 4.2 3 7.3 6.8 7.3 3.3 0 5.7-2.3 5.7-5.1 0-2.4-1.7-4.1-3.8-4.1-1.8 0-3.1 1.3-3.1 2.9 0 1.4 1 2.4 2.3 2.4" /></svg></span>;
 const initial = <T,>(key: string, fallback: T): T => {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; }
   catch { return fallback; }
@@ -282,14 +283,14 @@ export default function App() {
   const beginAddingForDay = (day: number) => { setTargetDay(day); setView('recipes'); setQuery(''); };
 
   if (import.meta.env.PROD && !supabase) return <div className="shell"><main className="main"><section className="panel auth-panel">
-    <div className="brand"><span className="brandmark">✳</span>teller</div><h1>Supabase noch nicht verbunden</h1>
+    <div className="brand"><BrandMark />casa</div><h1>Supabase noch nicht verbunden</h1>
     <p>Die Live-App braucht ihre Supabase-Projektwerte, bevor Anmeldung und gemeinsame Speicherung verfügbar sind.</p>
     <ol className="setup-steps"><li>Im Repository unter <b>Settings → Secrets and variables → Actions → Variables</b> die Projekt-URL als <code>VITE_SUPABASE_URL</code> eintragen.</li><li>Den Supabase-Publishable-Key als <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> eintragen.</li><li>Den Workflow <b>Deploy to GitHub Pages</b> erneut ausführen.</li></ol>
     <p className="setup-note">Im Client darf nur der Publishable-Key stehen, niemals ein Service-Role-Key.</p>
   </section></main></div>;
 
   if (supabase && !session) return <div className="shell"><main className="main"><section className="panel auth-panel">
-    <div className="brand"><span className="brandmark">✳</span>teller</div><h1>Anmelden</h1>
+    <div className="brand"><BrandMark />casa</div><h1>Anmelden</h1>
     <p>Mit eurem Supabase-Konto anmelden, um Wochenplan, Kochbuch und Einkauf gemeinsam zu nutzen. Konten werden vom Haushalts-Admin angelegt.</p>
     <form className="auth-form" onSubmit={signIn}>
       <label>E-Mail-Adresse<input className="search" type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} /></label>
@@ -301,7 +302,7 @@ export default function App() {
 
   return <div className="shell">
     <aside className="sidebar">
-      <div className="brand"><span className="brandmark">✳</span>teller</div>
+      <div className="brand"><BrandMark />casa</div>
       <nav className="nav">
         {(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}>
           <span className="ico">{['▦', '♨', '☷'][index]}</span>{['Wochenplan', 'Rezepte', 'Einkaufsliste'][index]}
