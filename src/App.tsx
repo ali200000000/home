@@ -290,7 +290,7 @@ export default function App() {
   </section></main></div>;
 
   if (supabase && !session) return <div className="shell auth-shell"><main className="main auth-main"><section className="auth-panel login-panel">
-    <div className="brand login-brand"><BrandMark /><span>komi</span></div><h1>Anmelden</h1>
+    <div className="brand login-brand"><BrandMark /><span>komi</span></div><h1>Hello!</h1>
     <p>Hier Mail und Passwort eintragen - dann geht´s los!</p>
     <form className="auth-form" onSubmit={signIn}>
       <label>E-Mail-Adresse<input type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} /></label>
