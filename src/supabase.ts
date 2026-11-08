@@ -10,5 +10,5 @@ export const supabase = url && publishableKey
 export type SharedAppData = {
   recipes: unknown[];
   plans: Record<string, number[]>;
-  items: { name: string; done: boolean }[];
+  items: { name: string; done: boolean; key?: string; auto?: boolean; qty?: string; cat?: string }[];
 };

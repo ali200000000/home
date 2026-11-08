@@ -53,6 +53,48 @@ const parseQuantity = (raw: string) => {
   const amount = ({ '¼': 0.25, '½': 0.5, '¾': 0.75 } as Record<string, number>)[match[1]] ?? Number(match[1].replace(',', '.'));
   return { amount, unit: match[2].trim() };
 };
+const sameValue = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
+function mergeRecord<T extends Record<string, unknown>>(base: T | undefined, local: T | undefined, remote: T | undefined): T | undefined {
+  if (sameValue(local, base)) return remote;
+  if (sameValue(remote, base) || sameValue(local, remote)) return local;
+  if (!local || !remote) return local;
+  const merged: Record<string, unknown> = {};
+  const keys = new Set([...Object.keys(base || {}), ...Object.keys(local), ...Object.keys(remote)]);
+  for (const key of keys) {
+    const b = base?.[key]; const l = local[key]; const r = remote[key];
+    const chosen = sameValue(l, b) ? r : sameValue(r, b) || sameValue(l, r) ? l : l;
+    if (chosen !== undefined) merged[key] = chosen;
+  }
+  return merged as T;
+}
+function mergeKeyedArrays<T extends Record<string, unknown>>(base: T[], local: T[], remote: T[], keyOf: (item: T, index: number) => string): T[] {
+  const toMap = (items: T[]) => new Map(items.map((item, index) => [keyOf(item, index), item]));
+  const b = toMap(base); const l = toMap(local); const r = toMap(remote);
+  const keys = new Set([...r.keys(), ...l.keys(), ...b.keys()]);
+  const result: T[] = [];
+  for (const key of keys) {
+    const value = mergeRecord(b.get(key), l.get(key), r.get(key));
+    if (value) result.push(value);
+  }
+  return result;
+}
+function mergePlans(base: Record<string, number[]>, local: Record<string, number[]>, remote: Record<string, number[]>): Record<string, number[]> {
+  const result: Record<string, number[]> = {};
+  for (const date of new Set([...Object.keys(base), ...Object.keys(local), ...Object.keys(remote)])) {
+    const b = base[date] || []; const l = local[date] || []; const r = remote[date] || [];
+    const ids = new Set([...r, ...l, ...b]);
+    const merged = [...ids].filter(id => l.includes(id) !== b.includes(id) ? l.includes(id) : r.includes(id));
+    if (merged.length) result[date] = merged;
+  }
+  return result;
+}
+function mergeSharedData(base: SharedAppData, local: SharedAppData, remote: SharedAppData): SharedAppData {
+  return {
+    recipes: mergeKeyedArrays(base.recipes as Record<string, unknown>[], local.recipes as Record<string, unknown>[], remote.recipes as Record<string, unknown>[], recipe => String(recipe.id)),
+    plans: mergePlans(base.plans, local.plans, remote.plans),
+    items: mergeKeyedArrays(base.items as unknown as Record<string, unknown>[], local.items as unknown as Record<string, unknown>[], remote.items as unknown as Record<string, unknown>[], (item, index) => String(item.key || `legacy:${item.name}:${index}`)) as unknown as Item[],
+  };
+}
 
 export default function App() {
   const [view, setView] = useState<'plan' | 'recipes' | 'shopping'>('plan');
@@ -82,6 +124,8 @@ export default function App() {
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const currentDataRef = useRef(JSON.stringify({ recipes, plans, items }));
   const persistedDataRef = useRef<string | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingSavesRef = useRef(0);
 
   useEffect(() => {
     if (!supabase) return;
@@ -148,15 +192,20 @@ export default function App() {
     const channel = client.channel('shared-app-state')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.1' }, payload => {
         const next = (payload.new as { payload?: SharedAppData }).payload;
-        if (!next || JSON.stringify(next) === currentDataRef.current) return;
-        const nextRecipes = next.recipes as Recipe[] || defaults;
-        const nextPlans = next.plans || {};
-        const nextItems = next.items as Item[] || [];
-        persistedDataRef.current = JSON.stringify({ recipes: nextRecipes, plans: nextPlans, items: nextItems });
-        currentDataRef.current = persistedDataRef.current;
-        setRecipes(nextRecipes);
-        setPlans(nextPlans);
-        setItems(nextItems);
+        if (!next) return;
+        const incoming: SharedAppData = {
+          recipes: Array.isArray(next.recipes) ? next.recipes : defaults,
+          plans: next.plans || {},
+          items: Array.isArray(next.items) ? next.items : [],
+        };
+        const current = JSON.parse(currentDataRef.current) as SharedAppData;
+        const previous = persistedDataRef.current ? JSON.parse(persistedDataRef.current) as SharedAppData : incoming;
+        const merged = mergeSharedData(previous, current, incoming);
+        persistedDataRef.current = JSON.stringify(incoming);
+        currentDataRef.current = JSON.stringify(merged);
+        setRecipes(merged.recipes as Recipe[]);
+        setPlans(merged.plans);
+        setItems(merged.items as Item[]);
       })
       .subscribe();
     return () => { cancelled = true; void client.removeChannel(channel); };
@@ -164,8 +213,8 @@ export default function App() {
 
   useEffect(() => {
     if (!loaded || loadFailed) return;
-    const payload: SharedAppData = { recipes, plans, items };
-    const serialized = JSON.stringify(payload);
+    const snapshot: SharedAppData = { recipes, plans, items };
+    const serialized = JSON.stringify(snapshot);
     currentDataRef.current = serialized;
     const client = supabase;
     if (!client || !session) {
@@ -179,13 +228,24 @@ export default function App() {
       return;
     }
     if (serialized === persistedDataRef.current) return;
-    const timer = window.setTimeout(async () => {
+    const timer = window.setTimeout(() => {
+      pendingSavesRef.current += 1;
       setSaving(true);
-      const { error } = await client.from('app_state').upsert({ id: 1, payload, updated_at: new Date().toISOString() });
-      setDataError(error ? `Speichern fehlgeschlagen: ${error.message}` : '');
-      if (!error) persistedDataRef.current = serialized;
-      setSaving(false);
-    }, 450);
+      const saveLatest = async () => {
+        try {
+          const latest = JSON.parse(currentDataRef.current) as SharedAppData;
+          const latestSerialized = JSON.stringify(latest);
+          if (latestSerialized === persistedDataRef.current) return;
+          const { error } = await client.from('app_state').upsert({ id: 1, payload: latest, updated_at: new Date().toISOString() });
+          setDataError(error ? `Speichern fehlgeschlagen: ${error.message}` : '');
+          if (!error) persistedDataRef.current = latestSerialized;
+        } finally {
+          pendingSavesRef.current -= 1;
+          setSaving(pendingSavesRef.current > 0);
+        }
+      };
+      saveQueueRef.current = saveQueueRef.current.then(saveLatest, saveLatest);
+    }, 150);
     return () => window.clearTimeout(timer);
   }, [recipes, plans, items, session, loaded, loadFailed]);
 
@@ -243,24 +303,7 @@ export default function App() {
   };
   const addMeal = (recipe: Recipe, day: number) => {
     const key = localDateKey(weekDate(day));
-    const nextPlans = { ...plans, [key]: [...(plans[key] || []), recipe.id] };
-    setPlans(nextPlans);
-    // Persist the meal selection immediately so navigation/state changes cannot
-    // cancel its save. The shopping list derived from this plan is saved by the
-    // regular change-only effect once it has been recalculated.
-    if (supabase && session && loaded && !loadFailed) {
-      const payload: SharedAppData = { recipes, plans: nextPlans, items };
-      const serialized = JSON.stringify(payload);
-      const previousPersisted = persistedDataRef.current;
-      persistedDataRef.current = serialized;
-      currentDataRef.current = serialized;
-      setSaving(true);
-      void supabase.from('app_state').upsert({ id: 1, payload, updated_at: new Date().toISOString() }).then(({ error }) => {
-        setDataError(error ? `Speichern fehlgeschlagen: ${error.message}` : '');
-        if (error && persistedDataRef.current === serialized) persistedDataRef.current = previousPersisted;
-        setSaving(false);
-      });
-    }
+    setPlans(previous => ({ ...previous, [key]: [...(previous[key] || []), recipe.id] }));
     setTargetDay(null);
     setView('plan');
     setDayPickerRecipe(null);
@@ -295,7 +338,7 @@ export default function App() {
       setModalMode('view');
       return;
     }
-    const id = Math.max(0, ...recipes.map(recipe => recipe.id)) + 1;
+    const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     const created: Recipe = { id, name, emoji: '', color: colors[(id - 1) % colors.length], time: `${minutes} min`, tag: 'Eigenes Rezept', ingredients };
     setRecipes(previous => [...previous, created]);
     if (modalMode === 'new' && targetDay !== null) {
@@ -317,7 +360,8 @@ export default function App() {
     event?.preventDefault();
     const name = newItem.trim();
     if (!name) return;
-    setItems(previous => [...previous, { name, done: false, cat: categoryFor(name), auto: false }]);
+    const key = `manual:${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+    setItems(previous => [...previous, { name, done: false, cat: categoryFor(name), auto: false, key }]);
     setNewItem('');
   };
   const toggleItem = (index: number) => setItems(previous => previous.map((item, i) => i === index ? { ...item, done: !item.done } : item));
