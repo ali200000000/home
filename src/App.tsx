@@ -33,6 +33,7 @@ const NavIcon = ({ view }: { view: ViewId }) => <svg viewBox="0 0 24 24" aria-hi
   {view === 'recipes' && <><path d="M6 3.5v7M3.5 3.5v4a2.5 2.5 0 0 0 5 0v-4M6 10v10.5M15.5 3.5c-2 2.2-3 4.5-3 7v1h6v-1c0-2.5-1-4.8-3-7ZM15.5 11.5v9" /></>}
   {view === 'shopping' && <><path d="m3.5 6 1.5 1.5L7.5 5M10 6h10M3.5 12l1.5 1.5L7.5 11M10 12h10M3.5 18l1.5 1.5L7.5 17M10 18h10" /></>}
 </svg>;
+const PencilIcon = () => <svg className="pencil-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4.5 19.5 3.8-.8L19 8a2.1 2.1 0 0 0-3-3L5.3 15.7l-.8 3.8Z" /><path d="m14.8 6.2 3 3" /></svg>;
 const initial = <T,>(key: string, fallback: T): T => {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; }
   catch { return fallback; }
@@ -348,7 +349,7 @@ export default function App() {
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
         <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className="recipe-card" key={recipe.id}>
           <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}><em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
-          <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}>✎</button></div>
+          <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}><PencilIcon /></button></div>
         </article>) : <div className="empty">Keine passenden Rezepte gefunden.</div>}</div>
       </section>}
 
@@ -367,7 +368,7 @@ export default function App() {
 
     {modalMode && <div className="modalback open" onClick={() => setModalMode(null)}><section className="modal" onClick={event => event.stopPropagation()}>
       {modalMode === 'view' && activeRecipe && <>
-        <div className="modalhead"><span className="eyebrow">{activeRecipe.time} · {activeRecipe.tag}</span><div className="modal-actions"><button className="recipe-edit-icon" aria-label="Rezept bearbeiten" onClick={() => openEditRecipe(activeRecipe)}>✎</button><button onClick={() => setModalMode(null)} aria-label="Schließen">×</button></div></div>
+        <div className="modalhead"><span className="eyebrow">{activeRecipe.time} · {activeRecipe.tag}</span><div className="modal-actions"><button className="recipe-edit-icon" aria-label="Rezept bearbeiten" onClick={() => openEditRecipe(activeRecipe)}><PencilIcon /></button><button onClick={() => setModalMode(null)} aria-label="Schließen">×</button></div></div>
         <div className="modalart" style={{ background: activeRecipe.color }}>{activeRecipe.emoji}</div><h2>{activeRecipe.name}</h2><h3>Zutaten</h3>
         {activeRecipe.ingredients.map(([name, amount]) => <div className="ingredient" key={`${name}-${amount}`}>{name}<span>{amount}</span></div>)}
         <button className="primary" onClick={() => openDayPicker(activeRecipe)}>＋ In den Wochenplan</button>
