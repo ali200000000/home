@@ -95,10 +95,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .nav .ico svg,.mobile-nav button b svg{width:23px;height:23px;fill:none;stroke:#9a9aa1;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .nav button.active .ico,.mobile-nav button.active b{color:inherit}
 .nav button.active .ico svg,.mobile-nav button.active b svg{stroke:currentColor;stroke-width:2.2}
-.nav button.active[data-view="plan"] svg rect,.mobile-nav button.active[data-view="plan"] svg rect{fill:currentColor}
-.nav button.active[data-view="plan"] svg path,.mobile-nav button.active[data-view="plan"] svg path{stroke:var(--paper)}
-.nav button.active[data-view="recipes"] svg path,.mobile-nav button.active[data-view="recipes"] svg path{fill:currentColor}
-.nav button.active[data-view="shopping"] svg circle,.mobile-nav button.active[data-view="shopping"] svg circle{fill:currentColor}
 .mobile-nav button.active{color:#72727a}
 .weekdays{display:grid;gap:12px}
 .weekday-card{background:#fff;border-radius:17px;padding:15px 16px;box-shadow:0 1px 3px #0000000c}

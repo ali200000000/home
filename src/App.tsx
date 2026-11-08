@@ -27,6 +27,12 @@ const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Sa
 const monthShort = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'];
 const colors = ['#b5c5e8', '#ffb28f', '#aec8fb', '#eca9c4', '#c9b99f', '#b4b6c2'];
 const BrandMark = () => <span className="brandmark" aria-hidden="true"><svg viewBox="0 0 32 32" focusable="false"><path d="M25.5 15.8c0-6.1-4.5-10.3-10-10.3-5.6 0-10 4.2-10 9.2 0 4.2 3 7.3 6.8 7.3 3.3 0 5.7-2.3 5.7-5.1 0-2.4-1.7-4.1-3.8-4.1-1.8 0-3.1 1.3-3.1 2.9 0 1.4 1 2.4 2.3 2.4" /></svg></span>;
+type ViewId = 'plan' | 'recipes' | 'shopping';
+const NavIcon = ({ view }: { view: ViewId }) => <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  {view === 'plan' && <><rect x="3.5" y="5.5" width="17" height="15" rx="2" /><path d="M7.5 3.5v4M16.5 3.5v4M3.5 9.5h17M7.5 13h.01M12 13h.01M16.5 13h.01M7.5 16.5h.01M12 16.5h.01" /></>}
+  {view === 'recipes' && <><path d="M6 3.5v7M3.5 3.5v4a2.5 2.5 0 0 0 5 0v-4M6 10v10.5M15.5 3.5c-2 2.2-3 4.5-3 7v1h6v-1c0-2.5-1-4.8-3-7ZM15.5 11.5v9" /></>}
+  {view === 'shopping' && <><path d="m3.5 6 1.5 1.5L7.5 5M10 6h10M3.5 12l1.5 1.5L7.5 11M10 12h10M3.5 18l1.5 1.5L7.5 17M10 18h10" /></>}
+</svg>;
 const initial = <T,>(key: string, fallback: T): T => {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; }
   catch { return fallback; }
@@ -193,7 +199,7 @@ export default function App() {
   const visibleRecipes = recipes.filter(recipe => `${recipe.name} ${recipe.ingredients.map(item => item[0]).join(' ')}`.toLocaleLowerCase('de-DE').includes(query.toLocaleLowerCase('de-DE')));
   const currentWeekItems = items;
   const userInitial = session?.user.email?.trim().charAt(0).toLocaleUpperCase('de-DE') || '?';
-  const title = view === 'plan' ? 'Was essen wir diese Woche?' : view === 'recipes' ? 'Kochbuch' : 'Einkaufsliste';
+  const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : 'Einkaufsliste';
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -304,8 +310,8 @@ export default function App() {
     <aside className="sidebar">
       <div className="brand"><BrandMark />komi</div>
       <nav className="nav">
-        {(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}>
-          <span className="ico">{['▦', '♨', '☷'][index]}</span>{['Wochenplan', 'Rezepte', 'Einkaufsliste'][index]}
+        {(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}>
+          <span className="ico"><NavIcon view={id} /></span>{['Wochenplan', 'Kochbuch', 'Einkaufsliste'][index]}
         </button>)}
       </nav>
       <div className="household"><div className="avatar">{session ? userInitial : 'M'}</div><div><b>Unser Zuhause</b><small>Mit euch geteilt</small></div></div>
@@ -357,7 +363,7 @@ export default function App() {
         <div className="additem"><input value={newItem} onChange={event => setNewItem(event.target.value)} onKeyDown={event => event.key === 'Enter' && addShoppingItem()} placeholder="Noch etwas hinzufügen …" /><button onClick={addShoppingItem}>＋</button></div>
       </section>}
     </main>
-    <nav className="mobile-nav">{(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}><b>{['▦', '♨', '☷'][index]}</b>{['Plan', 'Kochbuch', 'Einkauf'][index]}</button>)}</nav>
+    <nav className="mobile-nav">{(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}><b><NavIcon view={id} /></b>{['Wochenplan', 'Kochbuch', 'Einkaufsliste'][index]}</button>)}</nav>
 
     {modalMode && <div className="modalback open" onClick={() => setModalMode(null)}><section className="modal" onClick={event => event.stopPropagation()}>
       {modalMode === 'view' && activeRecipe && <>
