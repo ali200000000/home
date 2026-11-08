@@ -70,6 +70,8 @@ export default function App() {
   const [formMinutes, setFormMinutes] = useState('25');
   const [formIngredients, setFormIngredients] = useState<[string, string][]>([['', '']]);
   const [session, setSession] = useState<Session | null>(null);
+  const [displayName, setDisplayName] = useState('');
+  const [onlineUsers, setOnlineUsers] = useState<{ id: string; name: string }[]>([]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -83,13 +85,37 @@ export default function App() {
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setDisplayName(String(data.session?.user.user_metadata?.display_name || ''));
+    });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
+      setDisplayName(String(nextSession?.user.user_metadata?.display_name || ''));
       setLoaded(false);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !session) { setOnlineUsers([]); return; }
+    const name = displayName.trim() || session.user.email?.split('@')[0] || 'Mitglied';
+    const channel = client.channel('komi-online-household', { config: { presence: { key: session.user.id } } });
+    const refresh = () => {
+      const state = channel.presenceState<{ display_name?: string }>();
+      const users = Object.entries(state).flatMap(([id, presences]) => {
+        const current = presences[presences.length - 1];
+        return current ? [{ id, name: current.display_name || 'Mitglied' }] : [];
+      });
+      setOnlineUsers(users);
+    };
+    channel.on('presence', { event: 'sync' }, refresh)
+      .subscribe(status => {
+        if (status === 'SUBSCRIBED') void channel.track({ display_name: name });
+      });
+    return () => { void client.removeChannel(channel); };
+  }, [session, displayName]);
 
   useEffect(() => {
     const client = supabase;
@@ -199,7 +225,7 @@ export default function App() {
   function weekDate(index: number) { const date = new Date(monday); date.setDate(date.getDate() + index); return date; }
   const visibleRecipes = recipes.filter(recipe => `${recipe.name} ${recipe.ingredients.map(item => item[0]).join(' ')}`.toLocaleLowerCase('de-DE').includes(query.toLocaleLowerCase('de-DE')));
   const currentWeekItems = items;
-  const userInitial = session?.user.email?.trim().charAt(0).toLocaleUpperCase('de-DE') || '?';
+  const userInitial = (displayName.trim().charAt(0) || session?.user.email?.trim().charAt(0) || '?').toLocaleUpperCase('de-DE');
   const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : 'Einkaufsliste';
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
@@ -207,7 +233,13 @@ export default function App() {
     if (!supabase) return;
     setAuthError('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setAuthError(error.message);
+    if (error) { setAuthError(error.message); return; }
+    const chosenName = displayName.trim();
+    if (chosenName) {
+      const { error: profileError } = await supabase.auth.updateUser({ data: { display_name: chosenName } });
+      if (profileError) setDataError(`Name konnte nicht gespeichert werden: ${profileError.message}`);
+      else localStorage.setItem(`komiDisplayName:${email.trim().toLocaleLowerCase('de-DE')}`, chosenName);
+    }
   };
   const addMeal = (recipe: Recipe, day: number) => {
     const key = localDateKey(weekDate(day));
@@ -281,9 +313,11 @@ export default function App() {
     setPlans(previous => Object.fromEntries(Object.entries(previous).map(([date, ids]) => [date, ids.filter(id => id !== recipe.id)]).filter(([, ids]) => (ids as number[]).length)));
     setModalMode(null); setActiveRecipe(null);
   };
-  const addShoppingItem = () => {
-    if (!newItem.trim()) return;
-    setItems(previous => [...previous, { name: newItem.trim(), done: false, cat: 'Sonstiges', auto: false }]);
+  const addShoppingItem = (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    const name = newItem.trim();
+    if (!name) return;
+    setItems(previous => [...previous, { name, done: false, cat: categoryFor(name), auto: false }]);
     setNewItem('');
   };
   const toggleItem = (index: number) => setItems(previous => previous.map((item, i) => i === index ? { ...item, done: !item.done } : item));
@@ -300,7 +334,8 @@ export default function App() {
     <div className="brand login-brand"><BrandMark /><span>komi</span></div><h1>Hello!</h1>
     <p>Hier Mail und Passwort eintragen - dann geht´s los!</p>
     <form className="auth-form" onSubmit={signIn}>
-      <label>E-Mail-Adresse<input type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} /></label>
+      <label>Dein Name<input type="text" autoComplete="nickname" maxLength={40} required value={displayName} onChange={event => setDisplayName(event.target.value)} placeholder="z. B. Alex" /></label>
+      <label>E-Mail-Adresse<input type="email" autoComplete="username" required value={email} onChange={event => { const value = event.target.value; setEmail(value); const savedName = localStorage.getItem(`komiDisplayName:${value.trim().toLocaleLowerCase('de-DE')}`); if (savedName) setDisplayName(savedName); }} /></label>
       <label>Passwort<input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label>
       <button className="login-submit" type="submit" aria-label="Anmelden"><span aria-hidden="true">→</span></button>
     </form>{authError && <p role="alert" className="error-message">{authError}</p>}
@@ -323,7 +358,7 @@ export default function App() {
           <button className="share sync-trigger" aria-haspopup="menu" aria-expanded={syncMenuOpen} onClick={() => setSyncMenuOpen(open => !open)}>
             <span className="stack"><span className="avatar">{userInitial}</span><span className="avatar plus">+</span></span>
           </button>
-          {syncMenuOpen && <><button className="sync-dismiss" aria-label="Menü schließen" onClick={() => setSyncMenuOpen(false)} /><div className="sync-popover" role="menu"><div className="sync-popover-status"><span className="sync-status-dot" />{saving ? 'Änderungen werden gespeichert' : 'Änderungen werden automatisch gespeichert'}</div><button className="signout" role="menuitem" onClick={() => { setSyncMenuOpen(false); void supabase?.auth.signOut(); }}>Abmelden</button></div></>}
+          {syncMenuOpen && <><button className="sync-dismiss" aria-label="Menü schließen" onClick={() => setSyncMenuOpen(false)} /><div className="sync-popover" role="menu"><div className="sync-popover-status"><span className="sync-status-dot" />{saving ? 'Änderungen werden gespeichert' : 'Änderungen werden automatisch gespeichert'}</div><div className="sync-people-heading">Angemeldet</div><div className="sync-people">{onlineUsers.map(person => <div className="sync-person" key={person.id}><span className="sync-person-avatar">{person.name.trim().charAt(0).toLocaleUpperCase('de-DE')}</span><span>{person.name}</span><i aria-label="Online" /></div>)}</div><button className="signout" role="menuitem" onClick={() => { setSyncMenuOpen(false); void supabase?.auth.signOut(); }}>Abmelden</button></div></>}
         </div> : <div className="share"><div className="stack"><span className="avatar">M</span><span className="avatar plus">+</span></div>Lokal gespeichert</div>}</div>
       </header>
       {dataError && <p role="alert" className="error-message">{dataError}</p>}
@@ -336,7 +371,7 @@ export default function App() {
           return <article className="weekday-card" key={day}>
             <div className="weekday-title"><strong>{day}</strong><span>{dateText(date)}</span>{weekOffset === 0 && index === 0 && <span className="today-mark">DIESE WOCHE</span>}</div>
             <div className="weekday-row"><div className="weekday-content">{dayMeals.length ? dayMeals.map((recipe, mealIndex) => <div className="weekday-meal" style={{ background: recipe.color }} key={`${recipe.id}-${mealIndex}`}>
-              <button className="meal-open" onClick={() => openRecipe(recipe)}>{recipe.name}<small>{recipe.time}</small></button>
+              <button className="meal-open" onClick={() => openRecipe(recipe)}>{recipe.name}</button>
               <button className="weekday-remove" aria-label={`${recipe.name} entfernen`} onClick={() => removeMeal(key, mealIndex)}>×</button>
             </div>) : <div className="weekday-empty">Noch nichts geplant</div>}</div>
             {dayMeals.length === 0 && <button className="weekday-add" aria-label={`${day} hinzufügen`} onClick={() => beginAddingForDay(index)}>＋</button>}</div>
@@ -361,7 +396,7 @@ export default function App() {
             <input type="checkbox" checked={item.done} onChange={() => toggleItem(index)} /><span>{item.name}</span><span className="qty">{item.qty || ''}</span>
           </label> : null)}
         </div>) : <div className="empty">Noch keine Einkäufe. Geplante Rezepte ergänzen ihre Zutaten automatisch.</div>}
-        <div className="additem"><input value={newItem} onChange={event => setNewItem(event.target.value)} onKeyDown={event => event.key === 'Enter' && addShoppingItem()} placeholder="Noch etwas hinzufügen …" /><button onClick={addShoppingItem}>＋</button></div>
+        <form className="additem" onSubmit={addShoppingItem}><input aria-label="Zutat hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Noch etwas hinzufügen …" /><button type="submit" aria-label="Zutat hinzufügen">＋</button></form>
       </section>}
     </main>
     <nav className="mobile-nav">{(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}><b><NavIcon view={id} /></b>{['Wochenplan', 'Kochbuch', 'Einkaufsliste'][index]}</button>)}</nav>
@@ -369,7 +404,7 @@ export default function App() {
     {modalMode && <div className="modalback open" onClick={() => setModalMode(null)}><section className="modal" onClick={event => event.stopPropagation()}>
       {modalMode === 'view' && activeRecipe && <>
         <div className="modalhead"><span className="eyebrow">{activeRecipe.time} · {activeRecipe.tag}</span><div className="modal-actions"><button className="recipe-edit-icon" aria-label="Rezept bearbeiten" onClick={() => openEditRecipe(activeRecipe)}><PencilIcon /></button><button onClick={() => setModalMode(null)} aria-label="Schließen">×</button></div></div>
-        <div className="modalart" style={{ background: activeRecipe.color }}>{activeRecipe.emoji}</div><h2>{activeRecipe.name}</h2><h3>Zutaten</h3>
+        <h2>{activeRecipe.name}</h2><h3>Zutaten</h3>
         {activeRecipe.ingredients.map(([name, amount]) => <div className="ingredient" key={`${name}-${amount}`}>{name}<span>{amount}</span></div>)}
         <button className="primary" onClick={() => openDayPicker(activeRecipe)}>＋ In den Wochenplan</button>
       </>}
