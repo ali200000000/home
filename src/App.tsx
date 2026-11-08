@@ -242,9 +242,16 @@ export default function App() {
   const toggleItem = (index: number) => setItems(previous => previous.map((item, i) => i === index ? { ...item, done: !item.done } : item));
   const beginAddingForDay = (day: number) => { setTargetDay(day); setView('recipes'); setQuery(''); };
 
+  if (import.meta.env.PROD && !supabase) return <div className="shell"><main className="main"><section className="panel auth-panel">
+    <div className="brand"><span className="brandmark">✳</span>teller</div><h1>Supabase noch nicht verbunden</h1>
+    <p>Die Live-App braucht ihre Supabase-Projektwerte, bevor Anmeldung und gemeinsame Speicherung verfügbar sind.</p>
+    <ol className="setup-steps"><li>Im Repository unter <b>Settings → Secrets and variables → Actions → Variables</b> die Projekt-URL als <code>VITE_SUPABASE_URL</code> eintragen.</li><li>Den Supabase-Publishable-Key als <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> eintragen.</li><li>Den Workflow <b>Deploy to GitHub Pages</b> erneut ausführen.</li></ol>
+    <p className="setup-note">Im Client darf nur der Publishable-Key stehen, niemals ein Service-Role-Key.</p>
+  </section></main></div>;
+
   if (supabase && !session) return <div className="shell"><main className="main"><section className="panel auth-panel">
     <div className="brand"><span className="brandmark">✳</span>teller</div><h1>Anmelden</h1>
-    <p>Mit Supabase-Konto anmelden, um euren gemeinsamen Essensplan zu öffnen.</p>
+    <p>Mit eurem Supabase-Konto anmelden, um Wochenplan, Kochbuch und Einkauf gemeinsam zu nutzen. Konten werden vom Haushalts-Admin angelegt.</p>
     <form className="auth-form" onSubmit={signIn}>
       <label>E-Mail-Adresse<input className="search" type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} /></label>
       <label>Passwort<input className="search" type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label>
