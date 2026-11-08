@@ -203,7 +203,24 @@ export default function App() {
   };
   const addMeal = (recipe: Recipe, day: number) => {
     const key = localDateKey(weekDate(day));
-    setPlans(previous => ({ ...previous, [key]: [...(previous[key] || []), recipe.id] }));
+    const nextPlans = { ...plans, [key]: [...(plans[key] || []), recipe.id] };
+    setPlans(nextPlans);
+    // Persist the meal selection immediately so navigation/state changes cannot
+    // cancel its save. The shopping list derived from this plan is saved by the
+    // regular change-only effect once it has been recalculated.
+    if (supabase && session && loaded && !loadFailed) {
+      const payload: SharedAppData = { recipes, plans: nextPlans, items };
+      const serialized = JSON.stringify(payload);
+      const previousPersisted = persistedDataRef.current;
+      persistedDataRef.current = serialized;
+      currentDataRef.current = serialized;
+      setSaving(true);
+      void supabase.from('app_state').upsert({ id: 1, payload, updated_at: new Date().toISOString() }).then(({ error }) => {
+        setDataError(error ? `Speichern fehlgeschlagen: ${error.message}` : '');
+        if (error && persistedDataRef.current === serialized) persistedDataRef.current = previousPersisted;
+        setSaving(false);
+      });
+    }
     setTargetDay(null);
     setView('plan');
     setDayPickerRecipe(null);
