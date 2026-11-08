@@ -264,7 +264,7 @@ export default function App() {
       <div className="household"><div className="avatar">M</div><div><b>Unser Zuhause</b><small>Mit euch geteilt</small></div></div>
     </aside>
     <main className="main">
-      <header className="top"><div><span className="eyebrow">GEMEINSAM GUT ESSEN</span><h1 id="title">{targetDay !== null && view === 'recipes' ? `Rezept für ${dayNames[targetDay]} wählen` : title}</h1></div>
+      <header className="top"><div><h1 id="title">{targetDay !== null && view === 'recipes' ? `Rezept für ${dayNames[targetDay]} wählen` : title}</h1></div>
         <div className="topright"><div className="share"><div className="stack"><span className="avatar">M</span><span className="avatar plus">+</span></div>{supabase ? (saving ? 'Speichert …' : 'Synchronisiert') : 'Lokal gespeichert'}</div>{supabase && <button className="signout" onClick={() => void supabase?.auth.signOut()}>Abmelden</button>}</div>
       </header>
       {dataError && <p role="alert" className="error-message">{dataError}</p>}
@@ -280,7 +280,7 @@ export default function App() {
               <button className="meal-open" onClick={() => openRecipe(recipe)}>{recipe.name}<small>{recipe.time}</small></button>
               <button className="weekday-remove" aria-label={`${recipe.name} entfernen`} onClick={() => removeMeal(key, mealIndex)}>×</button>
             </div>) : <div className="weekday-empty">Noch nichts geplant</div>}</div>
-            <button className="weekday-add" aria-label={`${day} hinzufügen`} onClick={() => beginAddingForDay(index)}>＋</button></div>
+            {dayMeals.length === 0 && <button className="weekday-add" aria-label={`${day} hinzufügen`} onClick={() => beginAddingForDay(index)}>＋</button>}</div>
           </article>;
         })}</div>
       </section>}
@@ -289,8 +289,8 @@ export default function App() {
         <div className="toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /><button className="pill" onClick={openNewRecipe}>＋ Rezept</button></div>
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
         <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className="recipe-card" key={recipe.id}>
-          <button className="recipe-card-open" onClick={() => openRecipe(recipe)}><div className="recipe-art" style={{ background: recipe.color }}><em>{recipe.time}</em>{recipe.emoji}</div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten · {recipe.tag}</p></div></button>
-          <div className="recipe-actions"><button className="recipe-add" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openDayPicker(recipe)}>＋ Einplanen</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}>✎</button></div>
+          <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art" style={{ background: recipe.color }}><em>{recipe.time}</em>{recipe.emoji}</div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten · {recipe.tag}</p></div></button>
+          <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}>✎</button></div>
         </article>) : <div className="empty">Keine passenden Rezepte gefunden.</div>}</div>
       </section>}
 
