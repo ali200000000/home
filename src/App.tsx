@@ -69,6 +69,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(!supabase);
   const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const currentDataRef = useRef(JSON.stringify({ recipes, plans, items }));
 
   useEffect(() => {
@@ -272,7 +273,12 @@ export default function App() {
     </aside>
     <main className="main">
       <header className="top"><div><h1 id="title">{targetDay !== null && view === 'recipes' ? `Rezept für ${dayNames[targetDay]} wählen` : title}</h1></div>
-        <div className="topright"><div className="share"><div className="stack"><span className="avatar">M</span><span className="avatar plus">+</span></div>{supabase ? (saving ? 'Speichert …' : 'Synchronisiert') : 'Lokal gespeichert'}</div>{supabase && <button className="signout" onClick={() => void supabase?.auth.signOut()}>Abmelden</button>}</div>
+        <div className="topright">{supabase ? <div className="sync-menu-wrap">
+          <button className="share sync-trigger" aria-haspopup="menu" aria-expanded={syncMenuOpen} onClick={() => setSyncMenuOpen(open => !open)}>
+            <span className="stack"><span className="avatar">M</span><span className="avatar plus">+</span></span>{saving ? 'Speichert …' : 'Synchronisiert'}<span className="sync-chevron">⌄</span>
+          </button>
+          {syncMenuOpen && <><button className="sync-dismiss" aria-label="Menü schließen" onClick={() => setSyncMenuOpen(false)} /><div className="sync-popover" role="menu"><div className="sync-popover-status"><span className="sync-status-dot" />{saving ? 'Änderungen werden gespeichert' : 'Mit Supabase synchronisiert'}</div><button className="signout" role="menuitem" onClick={() => { setSyncMenuOpen(false); void supabase?.auth.signOut(); }}>Abmelden</button></div></>}
+        </div> : <div className="share"><div className="stack"><span className="avatar">M</span><span className="avatar plus">+</span></div>Lokal gespeichert</div>}</div>
       </header>
       {dataError && <p role="alert" className="error-message">{dataError}</p>}
       {loadFailed && <section className="panel"><p>Der Zugriff auf die gemeinsame Datenbank ist fehlgeschlagen. Prüfe die Mitgliedschaft in `app_members` und lade die Seite anschließend neu.</p></section>}
