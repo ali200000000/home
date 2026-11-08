@@ -340,7 +340,7 @@ export default function App() {
         <div className="toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /><button className="pill" onClick={openNewRecipe}>＋ Rezept</button></div>
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
         <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className="recipe-card" key={recipe.id}>
-          <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}><em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten · {recipe.tag}</p></div></button>
+          <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}><em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
           <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}>✎</button></div>
         </article>) : <div className="empty">Keine passenden Rezepte gefunden.</div>}</div>
       </section>}
@@ -361,7 +361,7 @@ export default function App() {
     {modalMode && <div className="modalback open" onClick={() => setModalMode(null)}><section className="modal" onClick={event => event.stopPropagation()}>
       {modalMode === 'view' && activeRecipe && <>
         <div className="modalhead"><span className="eyebrow">{activeRecipe.time} · {activeRecipe.tag}</span><div className="modal-actions"><button className="recipe-edit-icon" aria-label="Rezept bearbeiten" onClick={() => openEditRecipe(activeRecipe)}>✎</button><button onClick={() => setModalMode(null)} aria-label="Schließen">×</button></div></div>
-        <div className="modalart" style={{ background: activeRecipe.color }}>{activeRecipe.emoji}</div><h2>{activeRecipe.name}</h2><h3>Zutaten · 2 Portionen</h3>
+        <div className="modalart" style={{ background: activeRecipe.color }}>{activeRecipe.emoji}</div><h2>{activeRecipe.name}</h2><h3>Zutaten</h3>
         {activeRecipe.ingredients.map(([name, amount]) => <div className="ingredient" key={`${name}-${amount}`}>{name}<span>{amount}</span></div>)}
         <button className="primary" onClick={() => openDayPicker(activeRecipe)}>＋ In den Wochenplan</button>
       </>}
