@@ -168,9 +168,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .weekday-grid{display:grid;grid-template-columns:repeat(7,minmax(125px,1fr));gap:10px;overflow-x:auto;padding-bottom:8px}
 .weekday-card{min-height:190px;background:white;border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:10px}
 .weekday-title{display:grid;gap:3px;font-size:13px}.weekday-title span{font-size:11px;color:var(--muted)}
-.weekday-meal{border-radius:10px;padding:10px;text-align:left;font-weight:650;font-size:12px}
+.weekday-content{display:grid;gap:7px}.weekday-empty{font-size:12px;color:var(--muted);padding:9px 2px}
+.weekday-meal{border-radius:10px;padding:8px;text-align:left;font-weight:650;font-size:12px;display:flex;align-items:flex-start;gap:4px}
+.meal-open{background:transparent;text-align:left;flex:1;min-width:0;font-weight:650;font-size:12px;line-height:1.25}.meal-open small{display:block;font-size:10px;font-weight:500;margin-top:4px;opacity:.7}
+.weekday-remove{background:transparent;font-size:15px;line-height:1;padding:0 2px}
 .weekday-add{margin-top:auto;background:#f2f2f7;color:var(--blue);border-radius:10px;min-height:38px;font-size:21px}
 .recipe-add{margin-top:10px;padding:9px 11px;border-radius:10px;background:var(--blue);color:white;font-size:12px;font-weight:650}
+.recipe-card-open{display:block;width:100%;text-align:left;background:transparent}.recipe-actions{display:flex;align-items:center;justify-content:space-between;padding:0 12px 12px}.recipe-actions .recipe-add{margin-top:0}.recipe-form{display:grid;gap:14px}.recipe-form>label{display:grid;gap:7px}.ingredient-edit-list{display:grid;gap:8px}.ingredient-edit-row{display:flex;gap:7px}.ingredient-edit-row input{min-width:0;flex:1;border:1px solid var(--line);border-radius:10px;padding:10px}.ingredient-edit-row button{width:36px;border-radius:10px;background:#f2f2f7}.add-ingredient,.delete-recipe{background:transparent;color:var(--blue);padding:10px;text-align:left;font-weight:650}.delete-recipe{color:var(--coral)}.modal-actions{display:flex;gap:8px;align-items:center}
 .item{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid #ececf0}
 .item input{accent-color:var(--green);width:19px;height:19px}
 .item.done{text-decoration:line-through;color:var(--muted)}

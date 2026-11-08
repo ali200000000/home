@@ -31,8 +31,8 @@ pnpm preview
    ```sql
    insert into public.app_members (user_id)
    values
-  ('UUID-DES-ERSTEN-USERS'),
-  ('UUID-DES-ZWEITEN-USERS')
+     ('UUID-DES-ERSTEN-USERS'),
+     ('UUID-DES-ZWEITEN-USERS')
    on conflict (user_id) do nothing;
    ```
 
@@ -44,15 +44,9 @@ Die App speichert den kompletten gemeinsamen App-Stand in einer JSONB-Datenbankz
 
 ## GitHub Pages veröffentlichen
 
-Im aktuellen Projektordner ist noch kein Git-Repository eingerichtet. Erstelle zuerst ein leeres Repository auf GitHub (ohne README oder Lizenz), und führe dann im Projektordner diese Befehle aus. Ersetze `BENUTZER` und `REPOSITORY` durch deine GitHub-Angaben:
+Das lokale Repository befindet sich im Projektordner und verwendet den Branch `main`. In GitHub Desktop muss als lokales Repository `/Users/alidabudde/Desktop/app 2.0` geöffnet sein. Der GitHub-Remote ist `https://github.com/ali200000000/home.git`. Den separaten Unterordner `einkauf/` nicht zum App-Repository hinzufügen.
 
-```sh
-git init -b main
-git add .
-git commit -m "React-App mit Supabase vorbereiten"
-git remote add origin https://github.com/BENUTZER/REPOSITORY.git
-git push -u origin main
-```
+Wenn GitHub Desktop die Änderungen im App-Ordner anzeigt, prüfe sie, committe die App-Dateien und klicke **Push origin**. Falls das Online-Repository noch nicht veröffentlicht wurde, nutze **Publish repository**, nenne es `home`, wähle das Konto `ali200000000` und lasse **Keep this code private** ausgeschaltet.
 
 Danach:
 
