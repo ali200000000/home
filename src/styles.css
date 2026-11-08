@@ -179,4 +179,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .item input{accent-color:var(--green);width:19px;height:19px}
 .item.done{text-decoration:line-through;color:var(--muted)}
 .additem{display:flex;gap:8px;margin-top:14px}.additem input{min-width:0;flex:1;border:1px solid var(--line);border-radius:11px;padding:12px;font:inherit}.additem button{background:var(--blue);color:white;border-radius:11px;width:44px;font-size:22px}
-@media(max-width:850px){.weekday-grid{grid-template-columns:repeat(7,minmax(145px,1fr))}.auth-panel{margin-top:5vh}}
+/* Final prototype layout: stack the seven day cards vertically at every width. */
+.weekday-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;overflow:visible;padding:0}
+.weekday-card{min-height:0;background:#fff;border-radius:17px;padding:15px 16px;display:block;box-shadow:0 1px 3px #0000000c}
+.weekday-title{display:flex;align-items:center;gap:9px;margin-bottom:8px;font-size:inherit}
+.weekday-title strong{font-size:17px;letter-spacing:-.03em}
+.weekday-title span{font-size:13px;color:var(--ios-secondary)}
+.weekday-row{display:flex;align-items:center;gap:10px;border-top:1px solid var(--ios-separator);min-height:62px}
+.weekday-content{display:block;flex:1;min-width:0}
+.weekday-empty{display:flex;align-items:center;min-height:60px;padding:8px 0;color:var(--ios-secondary);font-size:13px}
+.weekday-meal{width:100%;min-height:62px;margin:7px 0;padding:10px 12px;border-radius:14px;display:flex;align-items:center;gap:11px;font-size:14px}
+.meal-open{font-size:15px;line-height:1.2}
+.meal-open small{font-size:12px;opacity:.75}
+.weekday-remove{width:34px;height:34px;flex:none;border-radius:50%;background:#f2f2f7;color:#8a8a91;font-size:20px}
+.weekday-add{margin:0;color:var(--blue);background:#f2f2f7;border-radius:50%;width:38px;height:38px;min-height:38px;flex:none;display:grid;place-items:center;font-size:22px;line-height:1}
+@media(max-width:850px){.weekday-grid{grid-template-columns:minmax(0,1fr);overflow:visible}.auth-panel{margin-top:5vh}}
