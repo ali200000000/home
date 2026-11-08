@@ -59,3 +59,16 @@ begin
   end if;
 end;
 $$;
+
+-- Private recipe photos: only household members can upload or read images.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('recipe-images', 'recipe-images', true, 8388608, array['image/jpeg','image/png','image/webp','image/gif','image/heic','image/heif'])
+on conflict (id) do update set public = true, file_size_limit = 8388608,
+  allowed_mime_types = array['image/jpeg','image/png','image/webp','image/gif','image/heic','image/heif'];
+
+drop policy if exists "household members read recipe images" on storage.objects;
+create policy "household members read recipe images" on storage.objects for select to authenticated
+using (bucket_id = 'recipe-images' and (select public.app_is_member()));
+drop policy if exists "household members upload recipe images" on storage.objects;
+create policy "household members upload recipe images" on storage.objects for insert to authenticated
+with check (bucket_id = 'recipe-images' and (select public.app_is_member()) and (storage.foldername(name))[1] = (select auth.uid())::text);

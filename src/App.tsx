@@ -8,6 +8,7 @@ type Recipe = {
   name: string;
   emoji: string;
   color: string;
+  imageUrl?: string;
   time: string;
   tag: string;
   ingredients: [string, string][];
@@ -40,6 +41,7 @@ const initial = <T,>(key: string, fallback: T): T => {
 };
 const dateText = (date: Date) => `${date.getDate()}. ${monthShort[date.getMonth()]}`;
 const localDateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const normalizeSearch = (value: string) => value.trim().toLocaleLowerCase('de-DE').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const categoryFor = (name: string) => {
   const n = name.toLocaleLowerCase('de-DE');
   if (/zitrone|spinat|avocado|gurke|tomat|basilikum|erbse|paprika|salbei/.test(n)) return 'Obst & Gemüse';
@@ -104,6 +106,9 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [newItem, setNewItem] = useState('');
   const [weekOffset, setWeekOffset] = useState(0);
+  const monday = useMemo(() => new Date(2026, 10, 9 + weekOffset * 7), [weekOffset]);
+  const shoppingMonday = useMemo(() => new Date(2026, 10, 9), []);
+  function weekDate(index: number) { const date = new Date(monday); date.setDate(date.getDate() + index); return date; }
   const [targetDay, setTargetDay] = useState<number | null>(null);
   const [dayPickerRecipe, setDayPickerRecipe] = useState<Recipe | null>(null);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -111,6 +116,9 @@ export default function App() {
   const [formName, setFormName] = useState('');
   const [formMinutes, setFormMinutes] = useState('25');
   const [formIngredients, setFormIngredients] = useState<[string, string][]>([['', '']]);
+  const [formImage, setFormImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [recipeSaving, setRecipeSaving] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [onlineUsers, setOnlineUsers] = useState<{ id: string; name: string }[]>([]);
@@ -252,8 +260,19 @@ export default function App() {
   useEffect(() => {
     if (!loaded || loadFailed) return;
     const totals = new Map<string, { name: string; unit: string; amount: number | null; raw: string | null }>();
+    const currentWeekKeys = new Set(Array.from({ length: 7 }, (_, day) => {
+      const date = new Date(shoppingMonday); date.setDate(date.getDate() + day); return localDateKey(date);
+    }));
+    const historicalRecipeIngredients = new Set<string>();
+    for (const [dateKey, recipeIds] of Object.entries(plans)) {
+      if (currentWeekKeys.has(dateKey)) continue;
+      for (const recipeId of recipeIds) {
+        const recipe = recipes.find(item => item.id === recipeId);
+        recipe?.ingredients.forEach(([name]) => historicalRecipeIngredients.add(normalizeSearch(name)));
+      }
+    }
     for (let day = 0; day < 7; day++) {
-      const date = weekDate(day);
+      const date = new Date(shoppingMonday); date.setDate(date.getDate() + day);
       for (const recipeId of plans[localDateKey(date)] || []) {
         const recipe = recipes.find(item => item.id === recipeId);
         if (!recipe) continue;
@@ -267,7 +286,7 @@ export default function App() {
       }
     }
     setItems(previous => {
-      const manual = previous.filter(item => !item.auto);
+      const manual = previous.filter(item => !item.auto && !(item.qty !== undefined && historicalRecipeIngredients.has(normalizeSearch(item.name))));
       const checked = new Map(previous.filter(item => item.auto && item.done).map(item => [item.key, true]));
       const generated: Item[] = [...totals.entries()].map(([key, value]) => ({
         auto: true, key, name: value.name, cat: categoryFor(value.name),
@@ -279,11 +298,10 @@ export default function App() {
     });
   // The list is derived from plans and recipes; exclude items to prevent a state loop.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recipes, plans, weekOffset, loaded, loadFailed]);
+  }, [recipes, plans, shoppingMonday, loaded, loadFailed]);
 
-  const monday = useMemo(() => new Date(2026, 10, 9 + weekOffset * 7), [weekOffset]);
-  function weekDate(index: number) { const date = new Date(monday); date.setDate(date.getDate() + index); return date; }
-  const visibleRecipes = recipes.filter(recipe => `${recipe.name} ${recipe.ingredients.map(item => item[0]).join(' ')}`.toLocaleLowerCase('de-DE').includes(query.toLocaleLowerCase('de-DE')));
+  const normalizedQuery = normalizeSearch(query);
+  const visibleRecipes = recipes.filter(recipe => normalizeSearch([recipe.name, ...recipe.ingredients.flatMap(([name, amount]) => [name, amount])].join(' ')).includes(normalizedQuery));
   const currentWeekItems = items;
   const userInitial = (displayName.trim().charAt(0) || session?.user.email?.trim().charAt(0) || '?').toLocaleUpperCase('de-DE');
   const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : 'Einkaufsliste';
@@ -318,28 +336,42 @@ export default function App() {
   const openRecipe = (recipe: Recipe) => { setActiveRecipe(recipe); setModalMode('view'); };
   const openDayPicker = (recipe: Recipe) => { setDayPickerRecipe(recipe); setModalMode(null); };
   const openNewRecipe = () => {
-    setFormName(''); setFormMinutes('25'); setFormIngredients([['', '']]); setActiveRecipe(null); setModalMode('new');
+    setFormName(''); setFormMinutes('25'); setFormIngredients([['', '']]); setFormImage(null); setImagePreview(''); setActiveRecipe(null); setModalMode('new');
   };
   const openEditRecipe = (recipe: Recipe) => {
     setActiveRecipe(recipe); setFormName(recipe.name); setFormMinutes(String(parseInt(recipe.time, 10) || 25));
     setFormIngredients(recipe.ingredients.length ? recipe.ingredients.map(item => [...item] as [string, string]) : [['', '']]);
+    setFormImage(null); setImagePreview(recipe.imageUrl || '');
     setModalMode('edit');
   };
-  const saveRecipe = (event: FormEvent<HTMLFormElement>) => {
+  const saveRecipe = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const name = formName.trim();
     if (!name) return;
     const ingredients = formIngredients.map(([ingredient, amount]) => [ingredient.trim(), amount.trim()] as [string, string]).filter(item => item[0]);
     const minutes = Math.max(1, Number(formMinutes) || 25);
+    const id = modalMode === 'edit' && activeRecipe ? activeRecipe.id : Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    let imageUrl = modalMode === 'edit' && activeRecipe ? activeRecipe.imageUrl : undefined;
+    setRecipeSaving(true);
+    if (formImage && supabase && session) {
+      const extension = formImage.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+      const path = `${session.user.id}/${id}-${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from('recipe-images').upload(path, formImage, { contentType: formImage.type, upsert: false });
+      if (uploadError) { setDataError(`Bild konnte nicht hochgeladen werden: ${uploadError.message}`); setRecipeSaving(false); return; }
+      const { data } = supabase.storage.from('recipe-images').getPublicUrl(path);
+      imageUrl = data.publicUrl;
+    } else if (formImage && !supabase) {
+      setDataError('Für den Foto-Upload muss Supabase verbunden sein.'); setRecipeSaving(false); return;
+    }
     if (modalMode === 'edit' && activeRecipe) {
-      const updated = { ...activeRecipe, name, time: `${minutes} min`, ingredients };
+      const updated = { ...activeRecipe, name, time: `${minutes} min`, ingredients, imageUrl };
       setRecipes(previous => previous.map(recipe => recipe.id === activeRecipe.id ? updated : recipe));
       setActiveRecipe(updated);
       setModalMode('view');
+      setRecipeSaving(false);
       return;
     }
-    const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
-    const created: Recipe = { id, name, emoji: '', color: colors[(id - 1) % colors.length], time: `${minutes} min`, tag: 'Eigenes Rezept', ingredients };
+    const created: Recipe = { id, name, emoji: '', color: colors[(id - 1) % colors.length], time: `${minutes} min`, tag: 'Eigenes Rezept', ingredients, imageUrl };
     setRecipes(previous => [...previous, created]);
     if (modalMode === 'new' && targetDay !== null) {
       const dateKey = localDateKey(weekDate(targetDay));
@@ -349,6 +381,7 @@ export default function App() {
       setActiveRecipe(created);
       setModalMode('view');
     }
+    setRecipeSaving(false);
   };
   const deleteRecipe = (recipe: Recipe) => {
     if (!window.confirm(`„${recipe.name}“ wirklich löschen?`)) return;
@@ -397,7 +430,7 @@ export default function App() {
       <div className="household"><div className="avatar">{session ? userInitial : 'M'}</div><div><b>Unser Zuhause</b><small>Mit euch geteilt</small></div></div>
     </aside>
     <main className="main">
-      <header className="top"><div><h1 id="title">{targetDay !== null && view === 'recipes' ? `Rezept für ${dayNames[targetDay]} wählen` : title}</h1></div>
+      <header className="top"><div><h1 id="title">{title}</h1></div>
         <div className="topright">{supabase ? <div className="sync-menu-wrap">
           <button className="share sync-trigger" aria-haspopup="menu" aria-expanded={syncMenuOpen} onClick={() => setSyncMenuOpen(open => !open)}>
             <span className="stack"><span className="avatar">{userInitial}</span><span className="avatar plus">+</span></span>
@@ -427,8 +460,8 @@ export default function App() {
         <div className="toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /><button className="pill" onClick={openNewRecipe}>＋ Rezept</button></div>
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
         <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className="recipe-card" key={recipe.id}>
-          <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}><em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
-          <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}><PencilIcon /></button></div>
+          <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color, ...(recipe.imageUrl ? { backgroundImage: `url(${recipe.imageUrl})` } : {}) }}><em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
+          {targetDay === null && <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}><PencilIcon /></button></div>}
         </article>) : <div className="empty">Keine passenden Rezepte gefunden.</div>}</div>
       </section>}
 
@@ -448,6 +481,7 @@ export default function App() {
     {modalMode && <div className="modalback open" onClick={() => setModalMode(null)}><section className="modal" onClick={event => event.stopPropagation()}>
       {modalMode === 'view' && activeRecipe && <>
         <div className="modalhead"><span className="eyebrow">{activeRecipe.time} · {activeRecipe.tag}</span><div className="modal-actions"><button className="recipe-edit-icon" aria-label="Rezept bearbeiten" onClick={() => openEditRecipe(activeRecipe)}><PencilIcon /></button><button onClick={() => setModalMode(null)} aria-label="Schließen">×</button></div></div>
+        {activeRecipe.imageUrl && <img className="recipe-detail-image" src={activeRecipe.imageUrl} alt={`Foto von ${activeRecipe.name}`} />}
         <h2>{activeRecipe.name}</h2><h3>Zutaten</h3>
         {activeRecipe.ingredients.map(([name, amount]) => <div className="ingredient" key={`${name}-${amount}`}>{name}<span>{amount}</span></div>)}
         <button className="primary" onClick={() => openDayPicker(activeRecipe)}>＋ In den Wochenplan</button>
@@ -455,6 +489,8 @@ export default function App() {
       {(modalMode === 'new' || modalMode === 'edit') && <>
         <div className="modalhead"><h2>{modalMode === 'new' ? 'Neues Rezept' : 'Rezept bearbeiten'}</h2><button onClick={() => setModalMode(null)} aria-label="Schließen">×</button></div>
         <form className="recipe-form" onSubmit={saveRecipe}>
+          <label className="eyebrow">REZEPTFOTO<input type="file" accept="image/*" capture="environment" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith('image/')) { setDataError('Bitte wähle eine Bilddatei.'); return; } if (file.size > 8 * 1024 * 1024) { setDataError('Das Bild darf höchstens 8 MB groß sein.'); return; } setFormImage(file); setImagePreview(URL.createObjectURL(file)); }} /></label>
+          {imagePreview && <img className="recipe-image-preview" src={imagePreview} alt="Vorschau des Rezeptfotos" />}
           <label className="eyebrow">NAME<input className="search" required value={formName} onChange={event => setFormName(event.target.value)} placeholder="z. B. Ofengemüse mit Feta" /></label>
           <label className="eyebrow">ZUBEREITUNGSZEIT (MINUTEN)<input className="search" type="number" min="1" value={formMinutes} onChange={event => setFormMinutes(event.target.value)} /></label>
           <div className="eyebrow">ZUTATEN</div>
@@ -464,7 +500,7 @@ export default function App() {
             <button type="button" aria-label="Zutat entfernen" onClick={() => setFormIngredients(previous => previous.filter((_, i) => i !== index))}>×</button>
           </div>)}</div>
           <button type="button" className="add-ingredient" onClick={() => setFormIngredients(previous => [...previous, ['', '']])}>＋ Zutat hinzufügen</button>
-          <button className="primary" type="submit">{modalMode === 'new' ? 'Rezept speichern' : 'Änderungen speichern'}</button>
+          <button className="primary" type="submit" disabled={recipeSaving}>{recipeSaving ? 'Wird gespeichert …' : modalMode === 'new' ? 'Rezept speichern' : 'Änderungen speichern'}</button>
           {modalMode === 'edit' && activeRecipe && <button type="button" className="delete-recipe" onClick={() => deleteRecipe(activeRecipe)}>Rezept löschen</button>}
         </form>
       </>}
