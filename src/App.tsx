@@ -291,7 +291,7 @@ export default function App() {
 
   if (supabase && !session) return <div className="shell"><main className="main"><section className="panel auth-panel">
     <div className="brand"><BrandMark />casa</div><h1>Anmelden</h1>
-    <p>Mit eurem Supabase-Konto anmelden, um Wochenplan, Kochbuch und Einkauf gemeinsam zu nutzen. Konten werden vom Haushalts-Admin angelegt.</p>
+    <p>Hier Mail und Passwort eintragen - dann kann´s losgehen!</p>
     <form className="auth-form" onSubmit={signIn}>
       <label>E-Mail-Adresse<input className="search" type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} /></label>
       <label>Passwort<input className="search" type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label>
