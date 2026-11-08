@@ -1,4 +1,4 @@
-# casa — gemeinsam gut essen
+# komi — gemeinsam gut essen
 
 Mobile-first App zum Planen von Mahlzeiten, Verwalten von Rezepten und Führen einer Einkaufsliste. Die Daten lassen sich mit Supabase zwischen angemeldeten Geräten synchronisieren.
 

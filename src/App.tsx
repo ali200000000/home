@@ -283,26 +283,26 @@ export default function App() {
   const beginAddingForDay = (day: number) => { setTargetDay(day); setView('recipes'); setQuery(''); };
 
   if (import.meta.env.PROD && !supabase) return <div className="shell"><main className="main"><section className="panel auth-panel">
-    <div className="brand"><BrandMark />casa</div><h1>Supabase noch nicht verbunden</h1>
+    <div className="brand"><BrandMark />komi</div><h1>Supabase noch nicht verbunden</h1>
     <p>Die Live-App braucht ihre Supabase-Projektwerte, bevor Anmeldung und gemeinsame Speicherung verfügbar sind.</p>
     <ol className="setup-steps"><li>Im Repository unter <b>Settings → Secrets and variables → Actions → Variables</b> die Projekt-URL als <code>VITE_SUPABASE_URL</code> eintragen.</li><li>Den Supabase-Publishable-Key als <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> eintragen.</li><li>Den Workflow <b>Deploy to GitHub Pages</b> erneut ausführen.</li></ol>
     <p className="setup-note">Im Client darf nur der Publishable-Key stehen, niemals ein Service-Role-Key.</p>
   </section></main></div>;
 
-  if (supabase && !session) return <div className="shell"><main className="main"><section className="panel auth-panel">
-    <div className="brand"><BrandMark />casa</div><h1>Anmelden</h1>
-    <p>Hier Mail und Passwort eintragen - dann kann´s losgehen!</p>
+  if (supabase && !session) return <div className="shell auth-shell"><main className="main auth-main"><section className="auth-panel login-panel">
+    <div className="brand login-brand"><BrandMark /><span>komi</span></div><h1>Anmelden</h1>
+    <p>Hier Mail und Passwort eintragen - dann geht´s los!</p>
     <form className="auth-form" onSubmit={signIn}>
-      <label>E-Mail-Adresse<input className="search" type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} /></label>
-      <label>Passwort<input className="search" type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label>
-      <button className="primary" type="submit">Anmelden</button>
+      <label>E-Mail-Adresse<input type="email" autoComplete="username" required value={email} onChange={event => setEmail(event.target.value)} /></label>
+      <label>Passwort<input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} /></label>
+      <button className="login-submit" type="submit" aria-label="Anmelden"><span aria-hidden="true">→</span></button>
     </form>{authError && <p role="alert" className="error-message">{authError}</p>}
   </section></main></div>;
   if (supabase && session && !loaded) return <div className="shell"><main className="main"><section className="panel">Gemeinsame Daten werden geladen …</section></main></div>;
 
   return <div className="shell">
     <aside className="sidebar">
-      <div className="brand"><BrandMark />casa</div>
+      <div className="brand"><BrandMark />komi</div>
       <nav className="nav">
         {(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}>
           <span className="ico">{['▦', '♨', '☷'][index]}</span>{['Wochenplan', 'Rezepte', 'Einkaufsliste'][index]}
