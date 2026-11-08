@@ -42,6 +42,8 @@ pnpm preview
 
 Die App speichert den kompletten gemeinsamen App-Stand in einer JSONB-Datenbankzeile. Änderungen werden automatisch gespeichert und über Supabase Realtime an andere geöffnete Geräte übertragen. Es gibt weiterhin einen Browser-Cache als lokale Kopie. Supabase-URL und Publishable key sind Client-Konfiguration; **Service-Role-Keys dürfen niemals in diese App oder GitHub Pages**.
 
+Rezeptfotos werden im Supabase-Storage-Bucket `recipe-images` abgelegt. Das Setup begrenzt Uploads auf 8 MB und erlaubt nur Bilddateien. Der Bucket ist öffentlich, damit die Bilder auf allen Geräten ohne ablaufende Links angezeigt werden können; lade deshalb keine privaten oder sensiblen Fotos hoch. Wenn du den Bucket noch nicht eingerichtet hast, führe `supabase/setup.sql` erneut im SQL Editor aus.
+
 ## GitHub Pages veröffentlichen
 
 Das lokale Repository befindet sich im Projektordner und verwendet den Branch `main`. In GitHub Desktop muss als lokales Repository `/Users/alidabudde/Desktop/app 2.0` geöffnet sein. Der GitHub-Remote ist `https://github.com/ali200000000/home.git`. Den separaten Unterordner `einkauf/` nicht zum App-Repository hinzufügen.

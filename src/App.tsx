@@ -354,35 +354,44 @@ export default function App() {
     const id = modalMode === 'edit' && activeRecipe ? activeRecipe.id : Date.now() * 1000 + Math.floor(Math.random() * 1000);
     let imageUrl = modalMode === 'edit' && activeRecipe ? activeRecipe.imageUrl : undefined;
     setRecipeSaving(true);
-    if (formImage && supabase && session) {
-      const extension = formImage.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-      const path = `${session.user.id}/${id}-${crypto.randomUUID()}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from('recipe-images').upload(path, formImage, { contentType: formImage.type, upsert: false });
-      if (uploadError) { setDataError(`Bild konnte nicht hochgeladen werden: ${uploadError.message}`); setRecipeSaving(false); return; }
-      const { data } = supabase.storage.from('recipe-images').getPublicUrl(path);
-      imageUrl = data.publicUrl;
-    } else if (formImage && !supabase) {
-      setDataError('Für den Foto-Upload muss Supabase verbunden sein.'); setRecipeSaving(false); return;
-    }
-    if (modalMode === 'edit' && activeRecipe) {
-      const updated = { ...activeRecipe, name, time: `${minutes} min`, ingredients, imageUrl };
-      setRecipes(previous => previous.map(recipe => recipe.id === activeRecipe.id ? updated : recipe));
-      setActiveRecipe(updated);
-      setModalMode('view');
-      setRecipeSaving(false);
-      return;
-    }
-    const created: Recipe = { id, name, emoji: '', color: colors[(id - 1) % colors.length], time: `${minutes} min`, tag: 'Eigenes Rezept', ingredients, imageUrl };
-    setRecipes(previous => [...previous, created]);
-    if (modalMode === 'new' && targetDay !== null) {
-      const dateKey = localDateKey(weekDate(targetDay));
-      setPlans(previous => ({ ...previous, [dateKey]: [...(previous[dateKey] || []), created.id] }));
-      setTargetDay(null); setView('plan'); setModalMode(null);
-    } else {
-      setActiveRecipe(created);
-      setModalMode('view');
-    }
-    setRecipeSaving(false);
+    try {
+      if (formImage && (!supabase || !session)) throw new Error('Bitte melde dich an, um ein Rezeptfoto hochzuladen.');
+      if (formImage && supabase && session) {
+        const extension = formImage.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+        const path = `${session.user.id}/${id}-${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from('recipe-images').upload(path, formImage, { contentType: formImage.type, upsert: false });
+        if (uploadError) throw new Error(`Bild-Upload fehlgeschlagen: ${uploadError.message}. Prüfe, ob das SQL-Setup für den Bucket „recipe-images“ ausgeführt wurde.`);
+        imageUrl = supabase.storage.from('recipe-images').getPublicUrl(path).data.publicUrl;
+      }
+      let nextRecipes: Recipe[];
+      let savedRecipe: Recipe;
+      if (modalMode === 'edit' && activeRecipe) {
+        savedRecipe = { ...activeRecipe, name, time: `${minutes} min`, ingredients, imageUrl };
+        nextRecipes = recipes.map(recipe => recipe.id === activeRecipe.id ? savedRecipe : recipe);
+      } else {
+        savedRecipe = { id, name, emoji: '', color: colors[(id - 1) % colors.length], time: `${minutes} min`, tag: 'Eigenes Rezept', ingredients, imageUrl };
+        nextRecipes = [...recipes, savedRecipe];
+      }
+      if (supabase && session) {
+        const current = JSON.parse(currentDataRef.current) as SharedAppData;
+        const payload: SharedAppData = { ...current, recipes: nextRecipes };
+        const serialized = JSON.stringify(payload);
+        const { error } = await supabase.from('app_state').upsert({ id: 1, payload, updated_at: new Date().toISOString() });
+        if (error) throw new Error(`Rezept konnte nicht in der Datenbank gespeichert werden: ${error.message}`);
+        currentDataRef.current = serialized;
+        persistedDataRef.current = serialized;
+      }
+      setDataError('');
+      setRecipes(nextRecipes);
+      if (modalMode === 'edit') { setActiveRecipe(savedRecipe); setModalMode('view'); }
+      else if (targetDay !== null) {
+        const dateKey = localDateKey(weekDate(targetDay));
+        setPlans(previous => ({ ...previous, [dateKey]: [...(previous[dateKey] || []), savedRecipe.id] }));
+        setTargetDay(null); setView('plan'); setModalMode(null);
+      } else { setActiveRecipe(savedRecipe); setModalMode('view'); }
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : 'Rezept oder Foto konnte nicht gespeichert werden.');
+    } finally { setRecipeSaving(false); }
   };
   const deleteRecipe = (recipe: Recipe) => {
     if (!window.confirm(`„${recipe.name}“ wirklich löschen?`)) return;
@@ -461,7 +470,7 @@ export default function App() {
         <div className="toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /><button className="pill" onClick={openNewRecipe}>＋ Rezept</button></div>
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
         <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className="recipe-card" key={recipe.id}>
-          <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color, ...(recipe.imageUrl ? { backgroundImage: `url(${recipe.imageUrl})` } : {}) }}><em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
+          <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}>{recipe.imageUrl && <img src={recipe.imageUrl} alt={`Foto von ${recipe.name}`} />}<em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
           {targetDay === null && <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}><PencilIcon /></button></div>}
         </article>) : <div className="empty">Keine passenden Rezepte gefunden.</div>}</div>
       </section>}
