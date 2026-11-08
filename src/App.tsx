@@ -71,6 +71,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const currentDataRef = useRef(JSON.stringify({ recipes, plans, items }));
+  const persistedDataRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -96,9 +97,16 @@ export default function App() {
         setDataError(`Datenbankzugriff fehlgeschlagen: ${error.message}`);
       } else if (data?.payload) {
         const payload = data.payload as SharedAppData;
-        setRecipes(payload.recipes as Recipe[] || defaults);
-        setPlans(payload.plans || {});
-        setItems(payload.items as Item[] || []);
+        const nextRecipes = payload.recipes as Recipe[] || defaults;
+        const nextPlans = payload.plans || {};
+        const nextItems = payload.items as Item[] || [];
+        persistedDataRef.current = JSON.stringify({ recipes: nextRecipes, plans: nextPlans, items: nextItems });
+        currentDataRef.current = persistedDataRef.current;
+        setRecipes(nextRecipes);
+        setPlans(nextPlans);
+        setItems(nextItems);
+      } else {
+        persistedDataRef.current = JSON.stringify({ recipes: defaults, plans: {}, items: [] });
       }
       setLoaded(true);
     };
@@ -107,9 +115,14 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.1' }, payload => {
         const next = (payload.new as { payload?: SharedAppData }).payload;
         if (!next || JSON.stringify(next) === currentDataRef.current) return;
-        setRecipes(next.recipes as Recipe[] || defaults);
-        setPlans(next.plans || {});
-        setItems(next.items as Item[] || []);
+        const nextRecipes = next.recipes as Recipe[] || defaults;
+        const nextPlans = next.plans || {};
+        const nextItems = next.items as Item[] || [];
+        persistedDataRef.current = JSON.stringify({ recipes: nextRecipes, plans: nextPlans, items: nextItems });
+        currentDataRef.current = persistedDataRef.current;
+        setRecipes(nextRecipes);
+        setPlans(nextPlans);
+        setItems(nextItems);
       })
       .subscribe();
     return () => { cancelled = true; void client.removeChannel(channel); };
@@ -118,7 +131,8 @@ export default function App() {
   useEffect(() => {
     if (!loaded || loadFailed) return;
     const payload: SharedAppData = { recipes, plans, items };
-    currentDataRef.current = JSON.stringify(payload);
+    const serialized = JSON.stringify(payload);
+    currentDataRef.current = serialized;
     const client = supabase;
     if (!client || !session) {
       localStorage.setItem('tellerRecipes', JSON.stringify(recipes));
@@ -126,10 +140,16 @@ export default function App() {
       localStorage.setItem('tellerList', JSON.stringify(items));
       return;
     }
+    if (persistedDataRef.current === null) {
+      persistedDataRef.current = serialized;
+      return;
+    }
+    if (serialized === persistedDataRef.current) return;
     const timer = window.setTimeout(async () => {
       setSaving(true);
       const { error } = await client.from('app_state').upsert({ id: 1, payload, updated_at: new Date().toISOString() });
       setDataError(error ? `Speichern fehlgeschlagen: ${error.message}` : '');
+      if (!error) persistedDataRef.current = serialized;
       setSaving(false);
     }, 450);
     return () => window.clearTimeout(timer);
@@ -171,6 +191,7 @@ export default function App() {
   function weekDate(index: number) { const date = new Date(monday); date.setDate(date.getDate() + index); return date; }
   const visibleRecipes = recipes.filter(recipe => `${recipe.name} ${recipe.ingredients.map(item => item[0]).join(' ')}`.toLocaleLowerCase('de-DE').includes(query.toLocaleLowerCase('de-DE')));
   const currentWeekItems = items;
+  const userInitial = session?.user.email?.trim().charAt(0).toLocaleUpperCase('de-DE') || '?';
   const title = view === 'plan' ? 'Was essen wir diese Woche?' : view === 'recipes' ? 'Kochbuch' : 'Einkaufsliste';
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
@@ -269,15 +290,15 @@ export default function App() {
           <span className="ico">{['▦', '♨', '☷'][index]}</span>{['Wochenplan', 'Rezepte', 'Einkaufsliste'][index]}
         </button>)}
       </nav>
-      <div className="household"><div className="avatar">M</div><div><b>Unser Zuhause</b><small>Mit euch geteilt</small></div></div>
+      <div className="household"><div className="avatar">{session ? userInitial : 'M'}</div><div><b>Unser Zuhause</b><small>Mit euch geteilt</small></div></div>
     </aside>
     <main className="main">
       <header className="top"><div><h1 id="title">{targetDay !== null && view === 'recipes' ? `Rezept für ${dayNames[targetDay]} wählen` : title}</h1></div>
         <div className="topright">{supabase ? <div className="sync-menu-wrap">
           <button className="share sync-trigger" aria-haspopup="menu" aria-expanded={syncMenuOpen} onClick={() => setSyncMenuOpen(open => !open)}>
-            <span className="stack"><span className="avatar">M</span><span className="avatar plus">+</span></span>{saving ? 'Speichert …' : 'Synchronisiert'}<span className="sync-chevron">⌄</span>
+            <span className="stack"><span className="avatar">{userInitial}</span><span className="avatar plus">+</span></span>
           </button>
-          {syncMenuOpen && <><button className="sync-dismiss" aria-label="Menü schließen" onClick={() => setSyncMenuOpen(false)} /><div className="sync-popover" role="menu"><div className="sync-popover-status"><span className="sync-status-dot" />{saving ? 'Änderungen werden gespeichert' : 'Mit Supabase synchronisiert'}</div><button className="signout" role="menuitem" onClick={() => { setSyncMenuOpen(false); void supabase?.auth.signOut(); }}>Abmelden</button></div></>}
+          {syncMenuOpen && <><button className="sync-dismiss" aria-label="Menü schließen" onClick={() => setSyncMenuOpen(false)} /><div className="sync-popover" role="menu"><div className="sync-popover-status"><span className="sync-status-dot" />{saving ? 'Änderungen werden gespeichert' : 'Änderungen werden automatisch gespeichert'}</div><button className="signout" role="menuitem" onClick={() => { setSyncMenuOpen(false); void supabase?.auth.signOut(); }}>Abmelden</button></div></>}
         </div> : <div className="share"><div className="stack"><span className="avatar">M</span><span className="avatar plus">+</span></div>Lokal gespeichert</div>}</div>
       </header>
       {dataError && <p role="alert" className="error-message">{dataError}</p>}
@@ -302,7 +323,7 @@ export default function App() {
         <div className="toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /><button className="pill" onClick={openNewRecipe}>＋ Rezept</button></div>
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
         <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className="recipe-card" key={recipe.id}>
-          <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art" style={{ background: recipe.color }}><em>{recipe.time}</em>{recipe.emoji}</div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten · {recipe.tag}</p></div></button>
+          <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}><em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten · {recipe.tag}</p></div></button>
           <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}>✎</button></div>
         </article>) : <div className="empty">Keine passenden Rezepte gefunden.</div>}</div>
       </section>}
