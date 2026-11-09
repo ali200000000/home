@@ -27,7 +27,7 @@ const defaults: Recipe[] = [
 const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 const monthShort = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'];
 const colors = ['#b5c5e8', '#ffb28f', '#aec8fb', '#eca9c4', '#c9b99f', '#b4b6c2'];
-const BrandMark = () => <span className="brandmark" aria-hidden="true"><svg viewBox="0 0 32 32" focusable="false"><path d="M25.5 15.8c0-6.1-4.5-10.3-10-10.3-5.6 0-10 4.2-10 9.2 0 4.2 3 7.3 6.8 7.3 3.3 0 5.7-2.3 5.7-5.1 0-2.4-1.7-4.1-3.8-4.1-1.8 0-3.1 1.3-3.1 2.9 0 1.4 1 2.4 2.3 2.4" /></svg></span>;
+const BrandLogo = () => <img className="brand-logo" src={`${import.meta.env.BASE_URL}mealy-logo.png`} alt="mealy" />;
 type ViewId = 'plan' | 'recipes' | 'shopping';
 const NavIcon = ({ view }: { view: ViewId }) => <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
   {view === 'plan' && <><rect x="3.5" y="5.5" width="17" height="15" rx="2" /><path d="M7.5 3.5v4M16.5 3.5v4M3.5 9.5h17M7.5 13h.01M12 13h.01M16.5 13h.01M7.5 16.5h.01M12 16.5h.01" /></>}
@@ -411,14 +411,14 @@ export default function App() {
   const beginAddingForDay = (day: number) => { setTargetDay(day); setView('recipes'); setQuery(''); };
 
   if (import.meta.env.PROD && !supabase) return <div className="shell"><main className="main"><section className="panel auth-panel">
-    <div className="brand"><BrandMark />mealy</div><h1>Supabase noch nicht verbunden</h1>
+    <div className="brand"><BrandLogo /></div><h1>Supabase noch nicht verbunden</h1>
     <p>Die Live-App braucht ihre Supabase-Projektwerte, bevor Anmeldung und gemeinsame Speicherung verfügbar sind.</p>
     <ol className="setup-steps"><li>Im Repository unter <b>Settings → Secrets and variables → Actions → Variables</b> die Projekt-URL als <code>VITE_SUPABASE_URL</code> eintragen.</li><li>Den Supabase-Publishable-Key als <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> eintragen.</li><li>Den Workflow <b>Deploy to GitHub Pages</b> erneut ausführen.</li></ol>
     <p className="setup-note">Im Client darf nur der Publishable-Key stehen, niemals ein Service-Role-Key.</p>
   </section></main></div>;
 
   if (supabase && !session) return <div className="shell auth-shell"><main className="main auth-main"><section className="auth-panel login-panel">
-    <div className="brand login-brand"><BrandMark /><span>mealy</span></div><h1>Hello!</h1>
+    <div className="brand login-brand"><BrandLogo /></div><h1>Hello!</h1>
     <p>Hier Mail und Passwort eintragen - dann geht´s los!</p>
     <form className="auth-form" onSubmit={signIn}>
       <label>Dein Name<input type="text" autoComplete="nickname" maxLength={40} required value={displayName} onChange={event => setDisplayName(event.target.value)} placeholder="z. B. Alex" /></label>
@@ -431,7 +431,7 @@ export default function App() {
 
   return <div className="shell">
     <aside className="sidebar">
-      <div className="brand"><BrandMark />mealy</div>
+      <div className="brand"><BrandLogo /></div>
       <nav className="nav">
         {(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}>
           <span className="ico"><NavIcon view={id} /></span>{['Wochenplan', 'Kochbuch', 'Einkaufsliste'][index]}
