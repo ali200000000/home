@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import './styles.css';
 import { supabase, type SharedAppData } from './supabase';
@@ -112,6 +112,13 @@ export default function App() {
   function weekDate(index: number) { const date = new Date(monday); date.setDate(date.getDate() + index); return date; }
   const [targetDay, setTargetDay] = useState<number | null>(null);
   const [dayPickerRecipe, setDayPickerRecipe] = useState<Recipe | null>(null);
+  const [dragRecipe, setDragRecipe] = useState<Recipe | null>(null);
+  const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
+  const [dragDay, setDragDay] = useState<number | null>(null);
+  const holdTimerRef = useRef<number | null>(null);
+  const holdPointerRef = useRef<{ id: number; x: number; y: number; recipe: Recipe } | null>(null);
+  const holdActiveRef = useRef(false);
+  const suppressRecipeClickRef = useRef(false);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [activeRecipe, setActiveRecipe] = useState<Recipe | null>(null);
   const [formName, setFormName] = useState('');
@@ -326,6 +333,7 @@ export default function App() {
     setTargetDay(null);
     setView('plan');
     setDayPickerRecipe(null);
+    setDragRecipe(null); setDragPoint(null); setDragDay(null);
     setModalMode(null);
   };
   const removeMeal = (date: string, index: number) => setPlans(previous => {
@@ -336,6 +344,59 @@ export default function App() {
   });
   const openRecipe = (recipe: Recipe) => { setActiveRecipe(recipe); setModalMode('view'); };
   const openDayPicker = (recipe: Recipe) => { setDayPickerRecipe(recipe); setModalMode(null); };
+  const clearHoldTimer = () => { if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current); holdTimerRef.current = null; };
+  const startRecipeHold = (event: ReactPointerEvent<HTMLElement>, recipe: Recipe) => {
+    if ((event.target as HTMLElement).closest('.recipe-actions button')) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    clearHoldTimer();
+    holdActiveRef.current = false;
+    holdPointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, recipe };
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Pointer capture can be unavailable in older Safari versions. */ }
+    holdTimerRef.current = window.setTimeout(() => {
+      holdActiveRef.current = true;
+      setDragRecipe(recipe); setDragDay(null); setDragPoint({ x: event.clientX, y: event.clientY });
+      if (navigator.vibrate) navigator.vibrate(12);
+    }, 480);
+  };
+  const moveRecipeHold = (event: ReactPointerEvent<HTMLElement>) => {
+    const pointer = holdPointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId) return;
+    if (!holdActiveRef.current && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 12) {
+      clearHoldTimer(); holdPointerRef.current = null; return;
+    }
+    if (!holdActiveRef.current) return;
+    event.preventDefault();
+    setDragPoint({ x: event.clientX, y: event.clientY });
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-drop-day]');
+    setDragDay(target ? Number(target.dataset.dropDay) : null);
+  };
+  const endRecipeHold = (event: ReactPointerEvent<HTMLElement>) => {
+    const pointer = holdPointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId) return;
+    clearHoldTimer();
+    if (holdActiveRef.current) {
+      suppressRecipeClickRef.current = true;
+      window.setTimeout(() => { suppressRecipeClickRef.current = false; }, 700);
+      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-drop-day]');
+      const day = target ? Number(target.dataset.dropDay) : null;
+      setDragPoint(null); setDragDay(day);
+      if (day !== null && day >= 0 && day < dayNames.length) addMeal(pointer.recipe, day);
+    }
+    holdActiveRef.current = false;
+    holdPointerRef.current = null;
+  };
+  const cancelRecipeHold = (event: ReactPointerEvent<HTMLElement>) => {
+    if (holdPointerRef.current?.id !== event.pointerId) return;
+    clearHoldTimer(); holdPointerRef.current = null; holdActiveRef.current = false; setDragPoint(null);
+  };
+  const closeDragSheet = () => { clearHoldTimer(); holdPointerRef.current = null; holdActiveRef.current = false; setDragRecipe(null); setDragPoint(null); setDragDay(null); };
+  const dragPointerActive = Boolean(dragRecipe && dragPoint);
+  useEffect(() => {
+    if (!dragPointerActive) return;
+    const stopPageScroll = (event: TouchEvent) => event.preventDefault();
+    document.addEventListener('touchmove', stopPageScroll, { passive: false });
+    return () => document.removeEventListener('touchmove', stopPageScroll);
+  }, [dragPointerActive]);
   const openNewRecipe = () => {
     setFormName(''); setFormMinutes('25'); setFormIngredients([['', '']]); setFormImage(null); setImagePreview(''); setActiveRecipe(null); setModalMode('new');
   };
@@ -469,8 +530,8 @@ export default function App() {
       {view === 'recipes' && <section className="view visible">
         <div className="toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /><button className="pill" onClick={openNewRecipe}>＋ Rezept</button></div>
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
-        <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className="recipe-card" key={recipe.id}>
-          <button className="recipe-card-open" onClick={() => targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe)}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}>{recipe.imageUrl && <img src={recipe.imageUrl} alt={`Foto von ${recipe.name}`} />}<em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
+        <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className="recipe-card" key={recipe.id} onPointerDown={event => startRecipeHold(event, recipe)} onPointerMove={moveRecipeHold} onPointerUp={endRecipeHold} onPointerCancel={cancelRecipeHold} onContextMenu={event => event.preventDefault()}>
+          <button className="recipe-card-open" onClick={event => { if (suppressRecipeClickRef.current) { event.preventDefault(); suppressRecipeClickRef.current = false; return; } targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe); }}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}>{recipe.imageUrl && <img draggable="false" src={recipe.imageUrl} alt={`Foto von ${recipe.name}`} />}<em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
           {targetDay === null && <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}><PencilIcon /></button></div>}
         </article>) : <div className="empty">Keine passenden Rezepte gefunden.</div>}</div>
       </section>}
@@ -487,6 +548,14 @@ export default function App() {
       </section>}
     </main>
     <nav className="mobile-nav">{(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}><b><NavIcon view={id} /></b>{['Wochenplan', 'Kochbuch', 'Einkaufsliste'][index]}</button>)}</nav>
+
+    {dragRecipe && <div className="drag-sheet-backdrop" onClick={event => { if (event.target === event.currentTarget && !holdActiveRef.current) closeDragSheet(); }}>
+      <section className="drag-day-sheet" role="dialog" aria-modal="true" aria-labelledby="drag-sheet-title">
+        <div className="drag-sheet-heading"><div><h2 id="drag-sheet-title">Wohin mit „{dragRecipe.name}“?</h2><p>Zieh das Rezept auf einen Wochentag.</p></div><button aria-label="Schließen" onClick={closeDragSheet}>×</button></div>
+        <div className="drag-day-list">{dayNames.map((day, index) => <button className={`drag-day-option ${dragDay === index ? 'drop-active' : ''}`} data-drop-day={index} key={day} onClick={() => addMeal(dragRecipe, index)}><span>{day}</span><small>{dateText(weekDate(index))}</small><b aria-hidden="true">＋</b></button>)}</div>
+      </section>
+    </div>}
+    {dragRecipe && dragPoint && <div className="drag-recipe-ghost" style={{ left: dragPoint.x, top: dragPoint.y }} aria-hidden="true"><span className="drag-ghost-dot">＋</span>{dragRecipe.name}</div>}
 
     {modalMode && <div className="modalback open" onClick={() => setModalMode(null)}><section className="modal" onClick={event => event.stopPropagation()}>
       {modalMode === 'view' && activeRecipe && <>
