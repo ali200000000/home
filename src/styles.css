@@ -263,3 +263,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 @media(prefers-reduced-motion:reduce){.drag-sheet-backdrop,.drag-day-sheet{animation:none}.drag-day-option{transition:none}}
 /* iOS Safari zooms the page when a focused text field is smaller than 16px. */
 input:not([type="checkbox"]):not([type="file"]),textarea,select{font-size:16px!important}
+.recipe-form input:not([type="file"]){width:100%;min-height:48px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-secondary);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:16px!important;font-weight:500;line-height:1.35}
+.recipe-form input.recipe-name-input{min-height:54px;font-size:19px!important;font-weight:650;letter-spacing:-.02em}
+.recipe-form input::placeholder{color:var(--muted);font-weight:400;opacity:.8}
+.recipe-card.long-press-active{transform:scale(.985);box-shadow:0 10px 28px #10201b30}
+.drag-recipe-ghost{animation:drag-ghost-pop .24s cubic-bezier(.2,.8,.2,1)}
+@keyframes drag-ghost-pop{0%{opacity:.6;transform:translate(-50%,-125%) scale(.84)}65%{opacity:1;transform:translate(-50%,-125%) scale(1.06)}100%{transform:translate(-50%,-125%) scale(1)}}

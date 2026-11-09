@@ -355,7 +355,7 @@ export default function App() {
     holdTimerRef.current = window.setTimeout(() => {
       holdActiveRef.current = true;
       setDragRecipe(recipe); setDragDay(null); setDragPoint({ x: event.clientX, y: event.clientY });
-      if (navigator.vibrate) navigator.vibrate(12);
+      if (navigator.vibrate) navigator.vibrate(18);
     }, 480);
   };
   const moveRecipeHold = (event: ReactPointerEvent<HTMLElement>) => {
@@ -530,7 +530,7 @@ export default function App() {
       {view === 'recipes' && <section className="view visible">
         <div className="toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /><button className="pill" onClick={openNewRecipe}>＋ Rezept</button></div>
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
-        <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className="recipe-card" key={recipe.id} onPointerDown={event => startRecipeHold(event, recipe)} onPointerMove={moveRecipeHold} onPointerUp={endRecipeHold} onPointerCancel={cancelRecipeHold} onContextMenu={event => event.preventDefault()}>
+        <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className={`recipe-card ${dragRecipe?.id === recipe.id && dragPoint ? 'long-press-active' : ''}`} key={recipe.id} onPointerDown={event => startRecipeHold(event, recipe)} onPointerMove={moveRecipeHold} onPointerUp={endRecipeHold} onPointerCancel={cancelRecipeHold} onContextMenu={event => event.preventDefault()}>
           <button className="recipe-card-open" onClick={event => { if (suppressRecipeClickRef.current) { event.preventDefault(); suppressRecipeClickRef.current = false; return; } targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe); }}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}>{recipe.imageUrl && <img draggable="false" src={recipe.imageUrl} alt={`Foto von ${recipe.name}`} />}<em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
           {targetDay === null && <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}><PencilIcon /></button></div>}
         </article>) : <div className="empty">Keine passenden Rezepte gefunden.</div>}</div>
@@ -570,7 +570,7 @@ export default function App() {
         <form className="recipe-form" onSubmit={saveRecipe}>
           <label className="eyebrow">REZEPTFOTO<span className="recipe-photo-control"><input className="recipe-photo-input" type="file" accept="image/*" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith('image/')) { setDataError('Bitte wähle eine Bilddatei.'); return; } if (file.size > 8 * 1024 * 1024) { setDataError('Das Bild darf höchstens 8 MB groß sein.'); return; } setFormImage(file); setImagePreview(URL.createObjectURL(file)); }} /><span className="recipe-photo-button"><PhotoIcon />Foto aus der Galerie wählen</span></span></label>
           {imagePreview && <img className="recipe-image-preview" src={imagePreview} alt="Vorschau des Rezeptfotos" />}
-          <label className="eyebrow">NAME<input className="search" required value={formName} onChange={event => setFormName(event.target.value)} placeholder="z. B. Ofengemüse mit Feta" /></label>
+          <label className="eyebrow">NAME<input className="search recipe-name-input" required value={formName} onChange={event => setFormName(event.target.value)} placeholder="z. B. Ofengemüse mit Feta" /></label>
           <label className="eyebrow">ZUBEREITUNGSZEIT (MINUTEN)<input className="search" type="number" min="1" value={formMinutes} onChange={event => setFormMinutes(event.target.value)} /></label>
           <div className="eyebrow">ZUTATEN</div>
           <div className="ingredient-edit-list">{formIngredients.map(([name, amount], index) => <div className="ingredient-edit-row" key={index}>
