@@ -1,0 +1,12 @@
+{
+  "id": "./",
+  "name": "mealy — gemeinsam gut essen",
+  "short_name": "mealy",
+  "description": "Mahlzeiten planen, Rezepte sammeln und den Einkauf organisieren.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f2f2f7",
+  "theme_color": "#dce3ff",
+  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
