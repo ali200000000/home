@@ -35,7 +35,7 @@ const NavIcon = ({ view }: { view: ViewId }) => <svg viewBox="0 0 24 24" aria-hi
   {view === 'shopping' && <><path d="m3.5 6 1.5 1.5L7.5 5M10 6h10M3.5 12l1.5 1.5L7.5 11M10 12h10M3.5 18l1.5 1.5L7.5 17M10 18h10" /></>}
 </svg>;
 const PencilIcon = () => <svg className="pencil-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4.5 19.5 3.8-.8L19 8a2.1 2.1 0 0 0-3-3L5.3 15.7l-.8 3.8Z" /><path d="m14.8 6.2 3 3" /></svg>;
-const CameraIcon = () => <svg className="camera-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7.5h3l1.5-2h7l1.5 2h3a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-16A1.5 1.5 0 0 1 2.5 18V9A1.5 1.5 0 0 1 4 7.5Z"/><circle cx="12" cy="13" r="3.5"/></svg>;
+const PhotoIcon = () => <svg className="camera-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>;
 const initial = <T,>(key: string, fallback: T): T => {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; }
   catch { return fallback; }
@@ -499,7 +499,7 @@ export default function App() {
       {(modalMode === 'new' || modalMode === 'edit') && <>
         <div className="modalhead"><h2>{modalMode === 'new' ? 'Neues Rezept' : 'Rezept bearbeiten'}</h2><button onClick={() => setModalMode(null)} aria-label="Schließen">×</button></div>
         <form className="recipe-form" onSubmit={saveRecipe}>
-          <label className="eyebrow">REZEPTFOTO<span className="recipe-photo-control"><input className="recipe-photo-input" type="file" accept="image/*" capture="environment" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith('image/')) { setDataError('Bitte wähle eine Bilddatei.'); return; } if (file.size > 8 * 1024 * 1024) { setDataError('Das Bild darf höchstens 8 MB groß sein.'); return; } setFormImage(file); setImagePreview(URL.createObjectURL(file)); }} /><span className="recipe-photo-button"><CameraIcon />Foto hinzufügen</span></span></label>
+          <label className="eyebrow">REZEPTFOTO<span className="recipe-photo-control"><input className="recipe-photo-input" type="file" accept="image/*" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith('image/')) { setDataError('Bitte wähle eine Bilddatei.'); return; } if (file.size > 8 * 1024 * 1024) { setDataError('Das Bild darf höchstens 8 MB groß sein.'); return; } setFormImage(file); setImagePreview(URL.createObjectURL(file)); }} /><span className="recipe-photo-button"><PhotoIcon />Foto aus der Galerie wählen</span></span></label>
           {imagePreview && <img className="recipe-image-preview" src={imagePreview} alt="Vorschau des Rezeptfotos" />}
           <label className="eyebrow">NAME<input className="search" required value={formName} onChange={event => setFormName(event.target.value)} placeholder="z. B. Ofengemüse mit Feta" /></label>
           <label className="eyebrow">ZUBEREITUNGSZEIT (MINUTEN)<input className="search" type="number" min="1" value={formMinutes} onChange={event => setFormMinutes(event.target.value)} /></label>
