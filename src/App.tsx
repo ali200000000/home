@@ -470,6 +470,22 @@ export default function App() {
   };
   const toggleItem = (index: number) => setItems(previous => previous.map((item, i) => i === index ? { ...item, done: !item.done } : item));
   const beginAddingForDay = (day: number) => { setTargetDay(day); setView('recipes'); setQuery(''); };
+  const handleDockPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'touch' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    event.currentTarget.querySelectorAll<HTMLElement>('.dock-icon').forEach(icon => {
+      const rect = icon.getBoundingClientRect();
+      const distance = Math.abs(event.clientX - (rect.left + rect.width / 2));
+      const influence = Math.max(0, 1 - distance / 112);
+      icon.style.setProperty('--dock-scale', String(1 + influence * 0.38));
+      icon.style.setProperty('--dock-y', `${-influence * 9}px`);
+    });
+  };
+  const resetDockPointer = (event: ReactPointerEvent<HTMLElement>) => {
+    event.currentTarget.querySelectorAll<HTMLElement>('.dock-icon').forEach(icon => {
+      icon.style.setProperty('--dock-scale', '1');
+      icon.style.setProperty('--dock-y', '0px');
+    });
+  };
 
   if (import.meta.env.PROD && !supabase) return <div className="shell"><main className="main"><section className="panel auth-panel">
     <div className="brand"><BrandLogo /></div><h1>Supabase noch nicht verbunden</h1>
@@ -547,7 +563,7 @@ export default function App() {
         <form className="additem" onSubmit={addShoppingItem}><input aria-label="Zutat hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Noch etwas hinzufügen …" /><button type="submit" aria-label="Zutat hinzufügen">＋</button></form>
       </section>}
     </main>
-    <nav className="mobile-nav">{(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}><b><NavIcon view={id} /></b>{['Wochenplan', 'Kochbuch', 'Einkaufsliste'][index]}</button>)}</nav>
+    <nav className="mobile-nav" onPointerMove={handleDockPointerMove} onPointerLeave={resetDockPointer}>{(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}><b className="dock-icon"><NavIcon view={id} /></b>{['Wochenplan', 'Kochbuch', 'Einkaufsliste'][index]}</button>)}</nav>
 
     {dragRecipe && <div className="drag-sheet-backdrop" onClick={event => { if (event.target === event.currentTarget && !holdActiveRef.current) closeDragSheet(); }}>
       <section className="drag-day-sheet" role="dialog" aria-modal="true" aria-labelledby="drag-sheet-title">
