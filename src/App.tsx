@@ -36,7 +36,7 @@ const NavIcon = ({ view }: { view: ViewId }) => <svg viewBox="0 0 24 24" aria-hi
   {view === 'shopping' && <><path d="m3.5 6 1.5 1.5L7.5 5M10 6h10M3.5 12l1.5 1.5L7.5 11M10 12h10M3.5 18l1.5 1.5L7.5 17M10 18h10" /></>}
   {view === 'inspiration' && <><path d="m12 2.5 2.3 6.2 6.2 2.3-6.2 2.3-2.3 6.2-2.3-6.2-6.2-2.3 6.2-2.3L12 2.5Z"/><path d="m19 16 .9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9L19 16Z"/></>}
 </svg>;
-const PencilIcon = () => <svg className="pencil-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4.5 19.5 3.8-.8L19 8a2.1 2.1 0 0 0-3-3L5.3 15.7l-.8 3.8Z" /><path d="m14.8 6.2 3 3" /></svg>;
+const PencilIcon = () => <svg className="pencil-icon" viewBox="0 0 40 40" aria-hidden="true" focusable="false"><rect x="5.5" y="10" width="24" height="24" rx="3.5" fill="none" stroke="currentColor" strokeWidth="3.2" /><path d="m19 21 13-13 4 4-13 13-5 1z" fill="currentColor" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /><path d="m29.5 7.5 4 4" stroke="#fff" strokeWidth="1.5" /></svg>;
 const PhotoIcon = () => <svg className="camera-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>;
 const initial = <T,>(key: string, fallback: T): T => {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; }
@@ -107,6 +107,8 @@ export default function App() {
   const [plans, setPlans] = useState<Record<string, number[]>>(() => initial('tellerPlans', {}));
   const [items, setItems] = useState<Item[]>(() => initial('tellerList', []));
   const [query, setQuery] = useState('');
+  const [recipeFilter, setRecipeFilter] = useState('Alle');
+  const [filterOpen, setFilterOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
   const [weekOffset, setWeekOffset] = useState(0);
   const [weekDirection, setWeekDirection] = useState<1 | -1>(1);
@@ -119,6 +121,7 @@ export default function App() {
   const [dayPickerRecipe, setDayPickerRecipe] = useState<Recipe | null>(null);
   const [dragRecipe, setDragRecipe] = useState<Recipe | null>(null);
   const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
+  const [dragAnchor, setDragAnchor] = useState<{ x: number; y: number } | null>(null);
   const [dragDay, setDragDay] = useState<number | null>(null);
   const holdTimerRef = useRef<number | null>(null);
   const holdPointerRef = useRef<{ id: number; x: number; y: number; recipe: Recipe; element: HTMLElement } | null>(null);
@@ -127,7 +130,7 @@ export default function App() {
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [activeRecipe, setActiveRecipe] = useState<Recipe | null>(null);
   const [formName, setFormName] = useState('');
-  const [formMinutes, setFormMinutes] = useState('25');
+  const [formTimeLevel, setFormTimeLevel] = useState(1);
   const [formIngredients, setFormIngredients] = useState<[string, string][]>([['', '']]);
   const [formImage, setFormImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
@@ -356,10 +359,15 @@ export default function App() {
   }, [recipes, plans, shoppingMonday, loaded, loadFailed]);
 
   const normalizedQuery = normalizeSearch(query);
-  const visibleRecipes = recipes.filter(recipe => normalizeSearch([recipe.name, ...recipe.ingredients.flatMap(([name, amount]) => [name, amount])].join(' ')).includes(normalizedQuery));
+  const recipeFilters = ['Alle', 'schnell', 'mittel', 'lang'];
+  const visibleRecipes = recipes.filter(recipe => normalizeSearch([recipe.name, ...recipe.ingredients.flatMap(([name, amount]) => [name, amount])].join(' ')).includes(normalizedQuery) && (recipeFilter === 'Alle' || recipe.time.toLocaleLowerCase('de-DE') === recipeFilter));
   const currentWeekItems = items;
   const userInitial = (displayName.trim().charAt(0) || session?.user.email?.trim().charAt(0) || '?').toLocaleUpperCase('de-DE');
   const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : view === 'inspiration' ? 'Inspiration' : 'Einkaufsliste';
+  const weekRadialCenter = dragAnchor ? {
+    left: Math.max(160, Math.min(dragAnchor.x, window.innerWidth - 160)),
+    top: Math.max(42, Math.min(dragAnchor.y - 66, window.innerHeight - 42)),
+  } : null;
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -376,16 +384,21 @@ export default function App() {
   };
   const addMeal = (recipe: Recipe, day: number) => {
     const key = localDateKey(weekDate(day));
-    setPlans(previous => ({ ...previous, [key]: [...(previous[key] || []), recipe.id] }));
+    setPlans(previous => {
+      const dayPlans = previous[key] || [];
+      return dayPlans.includes(recipe.id) ? previous : { ...previous, [key]: [...dayPlans, recipe.id] };
+    });
     setScheduleNotice(`„${recipe.name}“ wurde für ${dayNames[day]} eingeplant.`);
     setTargetDay(null);
     setDayPickerRecipe(null);
-    setDragRecipe(null); setDragPoint(null); setDragDay(null);
+    setDragRecipe(null); setDragPoint(null); setDragAnchor(null); setDragDay(null);
     setModalMode(null);
   };
   const removeMeal = (date: string, index: number) => setPlans(previous => {
     const next = { ...previous, [date]: [...(previous[date] || [])] };
-    next[date].splice(index, 1);
+    const removedRecipeId = next[date][index];
+    if (removedRecipeId === undefined) return previous;
+    next[date] = next[date].filter(recipeId => recipeId !== removedRecipeId);
     if (!next[date].length) delete next[date];
     return next;
   });
@@ -404,7 +417,7 @@ export default function App() {
       if (!pointer || pointer.id !== event.pointerId) return;
       holdActiveRef.current = true;
       try { pointer.element.setPointerCapture(pointer.id); } catch { /* Pointer capture can be unavailable in older Safari versions. */ }
-      setDragRecipe(recipe); setDragDay(null); setDragPoint({ x: event.clientX, y: event.clientY });
+      setDragRecipe(recipe); setDragDay(null); setDragPoint({ x: event.clientX, y: event.clientY }); setDragAnchor({ x: event.clientX, y: event.clientY });
       if (navigator.vibrate) navigator.vibrate(18);
     }, 480);
   };
@@ -431,15 +444,16 @@ export default function App() {
       const day = target ? Number(target.dataset.dropDay) : null;
       setDragPoint(null); setDragDay(day);
       if (day !== null && day >= 0 && day < dayNames.length) addMeal(pointer.recipe, day);
+      else { setDragRecipe(null); setDragAnchor(null); setDragDay(null); }
     }
     holdActiveRef.current = false;
     holdPointerRef.current = null;
   };
   const cancelRecipeHold = (event: ReactPointerEvent<HTMLElement>) => {
     if (holdPointerRef.current?.id !== event.pointerId) return;
-    clearHoldTimer(); holdPointerRef.current = null; holdActiveRef.current = false; setDragPoint(null);
+    clearHoldTimer(); holdPointerRef.current = null; holdActiveRef.current = false; setDragPoint(null); setDragAnchor(null); setDragRecipe(null); setDragDay(null);
   };
-  const closeDragSheet = () => { clearHoldTimer(); holdPointerRef.current = null; holdActiveRef.current = false; setDragRecipe(null); setDragPoint(null); setDragDay(null); };
+  const closeDragSheet = () => { clearHoldTimer(); holdPointerRef.current = null; holdActiveRef.current = false; setDragRecipe(null); setDragPoint(null); setDragAnchor(null); setDragDay(null); };
   const dragPointerActive = Boolean(dragRecipe && dragPoint);
   useEffect(() => {
     if (!dragPointerActive) return;
@@ -448,10 +462,10 @@ export default function App() {
     return () => document.removeEventListener('touchmove', stopPageScroll);
   }, [dragPointerActive]);
   const openNewRecipe = () => {
-    setFormName(''); setFormMinutes('25'); setFormIngredients([['', '']]); setFormImage(null); setImagePreview(''); setActiveRecipe(null); setModalMode('new');
+    setFormName(''); setFormTimeLevel(1); setFormIngredients([['', '']]); setFormImage(null); setImagePreview(''); setActiveRecipe(null); setModalMode('new');
   };
   const openEditRecipe = (recipe: Recipe) => {
-    setActiveRecipe(recipe); setFormName(recipe.name); setFormMinutes(String(parseInt(recipe.time, 10) || 25));
+    setActiveRecipe(recipe); setFormName(recipe.name); setFormTimeLevel(['schnell', 'mittel', 'lang'].indexOf(recipe.time.toLocaleLowerCase('de-DE')) >= 0 ? ['schnell', 'mittel', 'lang'].indexOf(recipe.time.toLocaleLowerCase('de-DE')) : (parseInt(recipe.time, 10) || 25) <= 20 ? 0 : (parseInt(recipe.time, 10) || 25) <= 35 ? 1 : 2);
     setFormIngredients(recipe.ingredients.length ? recipe.ingredients.map(item => [...item] as [string, string]) : [['', '']]);
     setFormImage(null); setImagePreview(recipe.imageUrl || '');
     setModalMode('edit');
@@ -461,7 +475,7 @@ export default function App() {
     const name = formName.trim();
     if (!name) return;
     const ingredients = formIngredients.map(([ingredient, amount]) => [ingredient.trim(), amount.trim()] as [string, string]).filter(item => item[0]);
-    const minutes = Math.max(1, Number(formMinutes) || 25);
+    const timeLabel = (['schnell', 'mittel', 'lang'] as const)[formTimeLevel];
     const id = modalMode === 'edit' && activeRecipe ? activeRecipe.id : Date.now() * 1000 + Math.floor(Math.random() * 1000);
     let imageUrl = modalMode === 'edit' && activeRecipe ? activeRecipe.imageUrl : undefined;
     setRecipeSaving(true);
@@ -477,10 +491,10 @@ export default function App() {
       let nextRecipes: Recipe[];
       let savedRecipe: Recipe;
       if (modalMode === 'edit' && activeRecipe) {
-        savedRecipe = { ...activeRecipe, name, time: `${minutes} min`, ingredients, imageUrl };
+        savedRecipe = { ...activeRecipe, name, time: timeLabel, ingredients, imageUrl };
         nextRecipes = recipes.map(recipe => recipe.id === activeRecipe.id ? savedRecipe : recipe);
       } else {
-        savedRecipe = { id, name, emoji: '', color: colors[(id - 1) % colors.length], time: `${minutes} min`, tag: 'Eigenes Rezept', ingredients, imageUrl };
+        savedRecipe = { id, name, emoji: '', color: colors[(id - 1) % colors.length], time: timeLabel, tag: 'Eigenes Rezept', ingredients, imageUrl };
         nextRecipes = [...recipes, savedRecipe];
       }
       if (supabase && session) {
@@ -618,11 +632,10 @@ export default function App() {
       </section>}
 
       {view === 'recipes' && <section className="view visible">
-        <div className="toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /><button className="pill" onClick={openNewRecipe}>＋ Rezept</button></div>
+        <div className="toolbar"><input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /><div className="recipe-toolbar-actions"><button className="pill recipe-add-button" aria-label="Rezept hinzufügen" onClick={openNewRecipe}>＋</button><div className="recipe-filter-wrap"><button className={`pill recipe-filter-button${filterOpen || recipeFilter !== 'Alle' ? ' is-active' : ''}`} aria-label="Rezepte filtern" aria-expanded={filterOpen} onClick={() => setFilterOpen(open => !open)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4" /></svg></button>{filterOpen && <div className="recipe-filter-menu" role="group" aria-label="Rezeptkategorie filtern">{recipeFilters.map(filter => <button type="button" key={filter} className={recipeFilter === filter ? 'selected' : ''} onClick={() => { setRecipeFilter(filter); setFilterOpen(false); }}>{filter}{recipeFilter === filter && <span aria-hidden="true">✓</span>}</button>)}</div>}</div></div></div>
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
         <div className="recipegrid">{visibleRecipes.length ? visibleRecipes.map(recipe => <article className={`recipe-card ${dragRecipe?.id === recipe.id && dragPoint ? 'long-press-active' : ''}`} key={recipe.id} onPointerDown={event => startRecipeHold(event, recipe)} onPointerMove={moveRecipeHold} onPointerUp={endRecipeHold} onPointerCancel={cancelRecipeHold} onContextMenu={event => event.preventDefault()}>
           <button className="recipe-card-open" onClick={event => { if (suppressRecipeClickRef.current) { event.preventDefault(); suppressRecipeClickRef.current = false; return; } targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe); }}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}>{recipe.imageUrl && <img draggable="false" src={recipe.imageUrl} alt={`Foto von ${recipe.name}`} />}<em>{recipe.time}</em></div><div className="recipe-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
-          {targetDay === null && <div className="recipe-actions"><button className="recipe-add" aria-label={`${recipe.name} einplanen`} title="Einplanen" onClick={() => openDayPicker(recipe)}>＋</button><button className="recipe-edit-icon" aria-label={`${recipe.name} bearbeiten`} onClick={() => openEditRecipe(recipe)}><PencilIcon /></button></div>}
         </article>) : <div className="empty">Keine passenden Rezepte gefunden.</div>}</div>
       </section>}
 
@@ -643,29 +656,29 @@ export default function App() {
 
     {scheduleNotice && <div className="schedule-toast" role="status" aria-live="polite"><span className="schedule-toast-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.5" /></svg></span><span>{scheduleNotice}</span></div>}
 
-    {dragRecipe && <div className="drag-sheet-backdrop" onClick={event => { if (event.target === event.currentTarget && !holdActiveRef.current) closeDragSheet(); }}>
-      <section className="drag-day-sheet" role="dialog" aria-modal="true" aria-labelledby="drag-sheet-title">
-        <div className="drag-sheet-heading"><div><h2 id="drag-sheet-title">Wohin mit „{dragRecipe.name}“?</h2><p>Zieh das Rezept auf einen Wochentag.</p></div><button aria-label="Schließen" onClick={closeDragSheet}>×</button></div>
-        <div className="drag-day-list">{dayNames.map((day, index) => <button className={`drag-day-option ${dragDay === index ? 'drop-active' : ''}`} data-drop-day={index} key={day} onClick={() => addMeal(dragRecipe, index)}><span>{day}</span><small>{dateText(weekDate(index))}</small><b aria-hidden="true">＋</b></button>)}</div>
+    {dragRecipe && weekRadialCenter && <div className="week-radial-backdrop" onClick={closeDragSheet}>
+      <section className="week-radial" style={weekRadialCenter} role="dialog" aria-modal="true" aria-label={`Wochentag für ${dragRecipe.name} auswählen`} onClick={event => event.stopPropagation()}>
+        {dayNames.map((day, index) => {
+          const abbreviations = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+          return <button type="button" className={`week-radial-day${dragDay === index ? ' is-selected' : ''}`} data-day-label={day} data-drop-day={index} key={day} aria-label={`${day}, ${dateText(weekDate(index))}`} title={`${day}, ${dateText(weekDate(index))}`} onClick={() => addMeal(dragRecipe, index)}>{abbreviations[index]}</button>;
+        })}
       </section>
     </div>}
-    {dragRecipe && dragPoint && <div className="drag-recipe-ghost" style={{ left: dragPoint.x, top: dragPoint.y }} aria-hidden="true"><span className="drag-ghost-dot">＋</span>{dragRecipe.name}</div>}
 
-    {modalMode && <div className="modalback open" onClick={() => setModalMode(null)}><section className="modal" onClick={event => event.stopPropagation()}>
+    {modalMode && <div className={`modalback open${modalMode === 'new' || modalMode === 'edit' ? ' editor-modal-backdrop' : ''}`} onClick={() => setModalMode(null)}><section className={`modal${modalMode === 'new' || modalMode === 'edit' ? ' editor-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby={modalMode === 'new' || modalMode === 'edit' ? 'recipe-editor-title' : 'recipe-detail-title'} onClick={event => event.stopPropagation()}><div className="modal-scroll-area">
       {modalMode === 'view' && activeRecipe && <>
-        <div className="modalhead"><span className="eyebrow">{activeRecipe.time} · {activeRecipe.tag}</span><div className="modal-actions"><button className="recipe-edit-icon" aria-label="Rezept bearbeiten" onClick={() => openEditRecipe(activeRecipe)}><PencilIcon /></button><button onClick={() => setModalMode(null)} aria-label="Schließen">×</button></div></div>
+        <div className="modalhead"><span className="eyebrow">{activeRecipe.time} · {activeRecipe.ingredients.length} Zutaten</span><div className="modal-actions"><button className="recipe-edit-icon detail-icon-button" aria-label="Rezept bearbeiten" onClick={() => openEditRecipe(activeRecipe)}><PencilIcon /></button><button className="detail-icon-button" onClick={() => setModalMode(null)} aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div></div>
         {activeRecipe.imageUrl && <img className="recipe-detail-image" src={activeRecipe.imageUrl} alt={`Foto von ${activeRecipe.name}`} />}
-        <h2>{activeRecipe.name}</h2><h3>Zutaten</h3>
+        <h2 id="recipe-detail-title">{activeRecipe.name}</h2><h3>Zutaten</h3>
         {activeRecipe.ingredients.map(([name, amount]) => <div className="ingredient" key={`${name}-${amount}`}>{name}<span>{amount}</span></div>)}
         <button className="primary" onClick={() => openDayPicker(activeRecipe)}>＋ In den Wochenplan</button>
       </>}
       {(modalMode === 'new' || modalMode === 'edit') && <>
-        <div className="modalhead"><h2>{modalMode === 'new' ? 'Neues Rezept' : 'Rezept bearbeiten'}</h2><button onClick={() => setModalMode(null)} aria-label="Schließen">×</button></div>
+        <div className="modalhead"><span id="recipe-editor-title" className="visually-hidden">Rezept</span><button onClick={() => setModalMode(null)} aria-label="Schließen">×</button></div>
         <form className="recipe-form" onSubmit={saveRecipe}>
-          <label className="eyebrow">REZEPTFOTO<span className="recipe-photo-control"><input className="recipe-photo-input" type="file" accept="image/*" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith('image/')) { setDataError('Bitte wähle eine Bilddatei.'); return; } if (file.size > 8 * 1024 * 1024) { setDataError('Das Bild darf höchstens 8 MB groß sein.'); return; } setFormImage(file); setImagePreview(URL.createObjectURL(file)); }} /><span className="recipe-photo-button"><PhotoIcon />Foto aus der Galerie wählen</span></span></label>
-          {imagePreview && <img className="recipe-image-preview" src={imagePreview} alt="Vorschau des Rezeptfotos" />}
-          <label className="eyebrow">NAME<input className="search recipe-name-input" required value={formName} onChange={event => setFormName(event.target.value)} placeholder="z. B. Ofengemüse mit Feta" /></label>
-          <label className="eyebrow">ZUBEREITUNGSZEIT (MINUTEN)<input className="search" type="number" min="1" value={formMinutes} onChange={event => setFormMinutes(event.target.value)} /></label>
+          <label className="recipe-name-field"><span className="visually-hidden">Rezeptname</span><input className="search recipe-name-input" required value={formName} onChange={event => setFormName(event.target.value)} placeholder="Rezeptname" aria-label="Rezeptname" /></label>
+          <label className="eyebrow">REZEPTFOTO<div className={`recipe-photo-frame${imagePreview ? ' has-image' : ''}`}>{imagePreview && <img className="recipe-image-preview" src={imagePreview} alt="Vorschau des Rezeptfotos" />}<span className="recipe-photo-control"><input className="recipe-photo-input" type="file" accept="image/*" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith('image/')) { setDataError('Bitte wähle eine Bilddatei.'); return; } if (file.size > 8 * 1024 * 1024) { setDataError('Das Bild darf höchstens 8 MB groß sein.'); return; } setFormImage(file); setImagePreview(URL.createObjectURL(file)); }} /><span className="recipe-photo-button"><PhotoIcon />Foto auswählen</span></span></div></label>
+          <fieldset className="time-slider-field"><legend className="eyebrow">ZUBEREITUNGSZEIT</legend><output className="time-slider-value" aria-live="polite">{(['schnell', 'mittel', 'lang'] as const)[formTimeLevel]}</output><div className={`adaptive-time-slider level-${formTimeLevel}`}><div className="time-slider-dots" aria-hidden="true"><i /><i /><i /></div><input aria-label="Zubereitungszeit" type="range" min="0" max="2" step="1" value={formTimeLevel} onChange={event => setFormTimeLevel(Number(event.target.value))} /><span className="time-slider-thumb" aria-hidden="true" /></div><div className="time-slider-labels" aria-hidden="true"><span>schnell</span><span>mittel</span><span>lang</span></div></fieldset>
           <div className="eyebrow">ZUTATEN</div>
           <div className="ingredient-edit-list">{formIngredients.map(([name, amount], index) => <div className="ingredient-edit-row" key={index}>
             <input className="ingredient-name" aria-label="Zutat" placeholder="Zutat" value={name} onChange={event => setFormIngredients(previous => previous.map((row, i) => i === index ? [event.target.value, row[1]] : row))} />
@@ -677,7 +690,7 @@ export default function App() {
           {modalMode === 'edit' && activeRecipe && <button type="button" className="delete-recipe" onClick={() => deleteRecipe(activeRecipe)}>Rezept löschen</button>}
         </form>
       </>}
-    </section></div>}
+    </div></section></div>}
     {dayPickerRecipe && <div className="day-picker-backdrop open" onClick={() => setDayPickerRecipe(null)}><section className="day-picker" role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>
       <div className="day-picker-head"><h2>Zu welchem Tag hinzufügen?</h2><button aria-label="Schließen" onClick={() => setDayPickerRecipe(null)}>×</button></div>
       <div className="day-picker-list">{dayNames.map((day, index) => <button className="day-choice" key={day} onClick={() => addMeal(dayPickerRecipe, index)}>{day}<span>{dateText(weekDate(index))}</span></button>)}</div>
