@@ -103,6 +103,15 @@ function mergeSharedData(base: SharedAppData, local: SharedAppData, remote: Shar
 
 export default function App() {
   const [view, setView] = useState<ViewId>('plan');
+  useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 850px)');
+    const keepMobileOnAvailableView = () => {
+      if (mobileQuery.matches) setView(current => current === 'inspiration' ? 'plan' : current);
+    };
+    keepMobileOnAvailableView();
+    mobileQuery.addEventListener('change', keepMobileOnAvailableView);
+    return () => mobileQuery.removeEventListener('change', keepMobileOnAvailableView);
+  }, []);
   const [recipes, setRecipes] = useState<Recipe[]>(() => initial('tellerRecipes', defaults));
   const [plans, setPlans] = useState<Record<string, number[]>>(() => initial('tellerPlans', {}));
   const [items, setItems] = useState<Item[]>(() => initial('tellerList', []));
@@ -721,7 +730,8 @@ export default function App() {
       <section className="week-radial" style={weekRadialCenter} role="dialog" aria-modal="true" aria-label={`Wochentag für ${dragRecipe.name} auswählen`} onClick={event => event.stopPropagation()}>
         {dayNames.map((day, index) => {
           const abbreviations = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-          return <button type="button" className={`week-radial-day${dragDay === index ? ' is-selected' : ''}`} data-day-label={day} data-drop-day={index} key={day} aria-label={`${day}, ${dateText(weekDate(index))}`} title={`${day}, ${dateText(weekDate(index))}`} onClick={() => addMeal(dragRecipe, index)}>{abbreviations[index]}</button>;
+          const dayHasRecipe = (plans[localDateKey(weekDate(index))] || []).some(id => recipes.some(recipe => recipe.id === id));
+          return <button type="button" className={`week-radial-day${dayHasRecipe ? ' has-recipe' : ''}${dragDay === index ? ' is-selected' : ''}`} data-day-label={day} data-drop-day={index} key={day} aria-label={`${day}, ${dateText(weekDate(index))}${dayHasRecipe ? ', Rezept eingeplant' : ''}`} title={`${day}, ${dateText(weekDate(index))}`} onClick={() => addMeal(dragRecipe, index)}>{abbreviations[index]}</button>;
         })}
       </section>
     </div>}
