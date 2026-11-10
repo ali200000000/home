@@ -29,7 +29,7 @@ export default function InspirationGrid({ recipes, onSelect }: Props) {
   const [size, setSize] = useState<Point>({ x: 0, y: 0 });
   const [lens, setLens] = useState<Point>({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
-
+  const [zoom, setZoom] = useState(1);
   const updatePan = (next: Point) => { panRef.current = next; setPan(next); };
   const stopInertia = () => {
     if (inertiaRef.current !== null) cancelAnimationFrame(inertiaRef.current);
@@ -50,8 +50,8 @@ export default function InspirationGrid({ recipes, onSelect }: Props) {
     return () => { observer.disconnect(); query.removeEventListener('change', updateMotionPreference); stopInertia(); };
   }, []);
 
-  const tileWidth = size.x < 560 ? 174 : 224;
-  const tileHeight = size.x < 560 ? 208 : 258;
+  const tileWidth = (size.x < 560 ? 174 : 224) * zoom;
+  const tileHeight = (size.x < 560 ? 208 : 258) * zoom;
   const gap = size.x < 560 ? 10 : 13;
   const strideX = tileWidth + gap;
   const strideY = tileHeight + gap;
@@ -157,8 +157,13 @@ export default function InspirationGrid({ recipes, onSelect }: Props) {
   const handleWheel = (event: WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
     stopInertia();
+    if (event.ctrlKey || event.metaKey) {
+      setZoom(current => Math.max(0.65, Math.min(1.65, current * Math.exp(-event.deltaY * 0.004))));
+      return;
+    }
     updatePan({ x: panRef.current.x + event.deltaX * 0.65, y: panRef.current.y + event.deltaY * 0.65 });
   };
+
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const amount = 92;

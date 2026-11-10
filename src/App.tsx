@@ -97,6 +97,7 @@ function mergeSharedData(base: SharedAppData, local: SharedAppData, remote: Shar
   return {
     recipes: mergeKeyedArrays(base.recipes as Record<string, unknown>[], local.recipes as Record<string, unknown>[], remote.recipes as Record<string, unknown>[], recipe => String(recipe.id)),
     plans: mergePlans(base.plans, local.plans, remote.plans),
+    blockedDays: [...new Set([...(remote.blockedDays || []), ...(local.blockedDays || [])].filter(date => (local.blockedDays || []).includes(date) !== (base.blockedDays || []).includes(date) ? (local.blockedDays || []).includes(date) : true))],
     items: mergeKeyedArrays(base.items as unknown as Record<string, unknown>[], local.items as unknown as Record<string, unknown>[], remote.items as unknown as Record<string, unknown>[], (item, index) => String(item.key || `legacy:${item.name}:${index}`)) as unknown as Item[],
   };
 }
@@ -105,6 +106,8 @@ export default function App() {
   const [view, setView] = useState<ViewId>('plan');
   const [recipes, setRecipes] = useState<Recipe[]>(() => initial('tellerRecipes', defaults));
   const [plans, setPlans] = useState<Record<string, number[]>>(() => initial('tellerPlans', {}));
+  const [blockedDays, setBlockedDays] = useState<string[]>(() => initial('tellerBlockedDays', []));
+  const blockedDaysRef = useRef(blockedDays);
   const [items, setItems] = useState<Item[]>(() => initial('tellerList', []));
   const [query, setQuery] = useState('');
   const [recipeFilter, setRecipeFilter] = useState('Alle');
@@ -125,6 +128,14 @@ export default function App() {
   const [dragDay, setDragDay] = useState<number | null>(null);
   const holdTimerRef = useRef<number | null>(null);
   const holdPointerRef = useRef<{ id: number; x: number; y: number; recipe: Recipe; element: HTMLElement } | null>(null);
+  const [dayMenuIndex, setDayMenuIndex] = useState<number | null>(null);
+  const [dayMenuCenter, setDayMenuCenter] = useState<{ left: number; top: number } | null>(null);
+  const dayHoldTimerRef = useRef<number | null>(null);
+  const dayHoldPointerRef = useRef<{ id: number; x: number; y: number; index: number; element: HTMLElement } | null>(null);
+  const [dayActionHover, setDayActionHover] = useState<'block' | 'random' | null>(null);
+  const dayActionHoverRef = useRef<'block' | 'random' | null>(null);
+  const dayActionActiveRef = useRef(false);
+  const suppressDayMealClickRef = useRef(false);
   const holdActiveRef = useRef(false);
   const suppressRecipeClickRef = useRef(false);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -149,10 +160,14 @@ export default function App() {
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const syncTriggerRef = useRef<HTMLButtonElement>(null);
   const syncMenuRef = useRef<HTMLDivElement>(null);
-  const currentDataRef = useRef(JSON.stringify({ recipes, plans, items }));
+  const currentDataRef = useRef(JSON.stringify({ recipes, plans, items, blockedDays }));
   const persistedDataRef = useRef<string | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingSavesRef = useRef(0);
+
+  useEffect(() => {
+    blockedDaysRef.current = blockedDays;
+  }, [blockedDays]);
 
   useEffect(() => {
     if (!scheduleNotice) return;
@@ -237,13 +252,15 @@ export default function App() {
           const nextRecipes = payload.recipes as Recipe[] || defaults;
           const nextPlans = payload.plans || {};
           const nextItems = payload.items as Item[] || [];
-          persistedDataRef.current = JSON.stringify({ recipes: nextRecipes, plans: nextPlans, items: nextItems });
+          const nextBlockedDays = payload.blockedDays || [];
+          persistedDataRef.current = JSON.stringify({ recipes: nextRecipes, plans: nextPlans, items: nextItems, blockedDays: nextBlockedDays });
           currentDataRef.current = persistedDataRef.current;
           setRecipes(nextRecipes);
           setPlans(nextPlans);
           setItems(nextItems);
+          setBlockedDays(nextBlockedDays);
         } else {
-          persistedDataRef.current = JSON.stringify({ recipes: defaults, plans: {}, items: [] });
+          persistedDataRef.current = JSON.stringify({ recipes: defaults, plans: {}, items: [], blockedDays: [] });
         }
       } catch (error) {
         if (cancelled) return;
@@ -263,6 +280,7 @@ export default function App() {
           recipes: Array.isArray(next.recipes) ? next.recipes : defaults,
           plans: next.plans || {},
           items: Array.isArray(next.items) ? next.items : [],
+          blockedDays: next.blockedDays || [],
         };
         const current = JSON.parse(currentDataRef.current) as SharedAppData;
         const previous = persistedDataRef.current ? JSON.parse(persistedDataRef.current) as SharedAppData : incoming;
@@ -272,6 +290,7 @@ export default function App() {
         setRecipes(merged.recipes as Recipe[]);
         setPlans(merged.plans);
         setItems(merged.items as Item[]);
+        setBlockedDays(merged.blockedDays || []);
       })
       .subscribe();
     return () => { cancelled = true; window.clearTimeout(timeout); abortController.abort(); void client.removeChannel(channel); };
@@ -279,13 +298,14 @@ export default function App() {
 
   useEffect(() => {
     if (!loaded || loadFailed) return;
-    const snapshot: SharedAppData = { recipes, plans, items };
+    const snapshot: SharedAppData = { recipes, plans, items, blockedDays };
     const serialized = JSON.stringify(snapshot);
     currentDataRef.current = serialized;
     const client = supabase;
     if (!client || !session) {
       localStorage.setItem('tellerRecipes', JSON.stringify(recipes));
       localStorage.setItem('tellerPlans', JSON.stringify(plans));
+      localStorage.setItem('tellerBlockedDays', JSON.stringify(blockedDays));
       localStorage.setItem('tellerList', JSON.stringify(items));
       return;
     }
@@ -313,7 +333,7 @@ export default function App() {
       saveQueueRef.current = saveQueueRef.current.then(saveLatest, saveLatest);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [recipes, plans, items, session, loaded, loadFailed]);
+  }, [recipes, plans, items, blockedDays, session, loaded, loadFailed]);
 
   useEffect(() => {
     if (!loaded || loadFailed) return;
@@ -384,6 +404,7 @@ export default function App() {
   };
   const addMeal = (recipe: Recipe, day: number) => {
     const key = localDateKey(weekDate(day));
+    if (blockedDays.includes(key)) return;
     setPlans(previous => {
       const dayPlans = previous[key] || [];
       return dayPlans.includes(recipe.id) ? previous : { ...previous, [key]: [...dayPlans, recipe.id] };
@@ -404,6 +425,71 @@ export default function App() {
   });
   const openRecipe = (recipe: Recipe) => { setActiveRecipe(recipe); setModalMode('view'); };
   const openDayPicker = (recipe: Recipe) => { setDayPickerRecipe(recipe); setModalMode(null); };
+  const startDayHold = (event: ReactPointerEvent<HTMLElement>, index: number) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if ((event.target as HTMLElement).closest('.weekday-remove,.weekday-add')) return;
+    if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
+    dayHoldPointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, index, element: event.currentTarget };
+    dayHoldTimerRef.current = window.setTimeout(() => {
+      const pointer = dayHoldPointerRef.current;
+      if (!pointer || pointer.id !== event.pointerId) return;
+      try { pointer.element.setPointerCapture(pointer.id); } catch { /* Pointer capture can be unavailable in older Safari versions. */ }
+      setDayMenuIndex(index);
+      setDayMenuCenter({ left: Math.max(160, Math.min(event.clientX, window.innerWidth - 160)), top: Math.max(42, Math.min(event.clientY - 66, window.innerHeight - 42)) });
+      dayActionActiveRef.current = true;
+      suppressDayMealClickRef.current = true;
+      window.setTimeout(() => { suppressDayMealClickRef.current = false; }, 700);
+      if (navigator.vibrate) navigator.vibrate(18);
+    }, 480);
+  };
+  const moveDayHold = (event: ReactPointerEvent<HTMLElement>) => {
+    const pointer = dayHoldPointerRef.current;
+    if (!pointer || pointer.id !== event.pointerId) return;
+    if (dayActionActiveRef.current) {
+      event.preventDefault();
+      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-day-action]');
+      const action = target?.dataset.dayAction;
+      const hover = action === 'block' || action === 'random' ? action : null;
+      dayActionHoverRef.current = hover;
+      setDayActionHover(hover);
+      return;
+    }
+    if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 12 && dayMenuIndex === null) {
+      if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
+      dayHoldTimerRef.current = null; dayHoldPointerRef.current = null;
+    }
+  };
+  const endDayHold = (event: ReactPointerEvent<HTMLElement>) => {
+    if (dayHoldPointerRef.current?.id !== event.pointerId) return;
+    if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
+    const active = dayActionActiveRef.current;
+    const target = active ? document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-day-action]') : null;
+    const action = target?.dataset.dayAction === 'block' || target?.dataset.dayAction === 'random'
+      ? target.dataset.dayAction
+      : dayActionHoverRef.current;
+    const index = dayHoldPointerRef.current.index;
+    dayHoldPointerRef.current = null;
+    dayHoldTimerRef.current = null;
+    if (action === 'block') toggleDayBlocked(index);
+    else if (action === 'random' && !blockedDays.includes(localDateKey(weekDate(index)))) randomizeDay(index);
+    else if (active) closeDayMenu();
+  };
+  const closeDayMenu = () => { setDayMenuIndex(null); setDayMenuCenter(null); dayActionHoverRef.current = null; setDayActionHover(null); dayActionActiveRef.current = false; };
+  const toggleDayBlocked = (index: number) => {
+    const key = localDateKey(weekDate(index));
+    const current = blockedDaysRef.current;
+    const willBlock = !current.includes(key);
+    const next = willBlock ? [...current, key] : current.filter(date => date !== key);
+    blockedDaysRef.current = next;
+    setBlockedDays(next);
+    if (willBlock) setPlans(previous => { const nextPlans = { ...previous }; delete nextPlans[key]; return nextPlans; });
+    closeDayMenu();
+  };
+  const randomizeDay = (index: number) => {
+    const key = localDateKey(weekDate(index));
+    if (!blockedDays.includes(key) && recipes.length) addMeal(recipes[Math.floor(Math.random() * recipes.length)], index);
+    closeDayMenu();
+  };
   const clearHoldTimer = () => { if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current); holdTimerRef.current = null; };
   const startRecipeHold = (event: ReactPointerEvent<HTMLElement>, recipe: Recipe) => {
     if (targetDay !== null) return;
@@ -553,18 +639,21 @@ export default function App() {
   };
   const handleDockPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType === 'touch' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    event.currentTarget.querySelectorAll<HTMLElement>('.dock-icon').forEach(icon => {
-      const rect = icon.getBoundingClientRect();
-      const distance = Math.abs(event.clientX - (rect.left + rect.width / 2));
-      const influence = Math.max(0, 1 - distance / 112);
-      icon.style.setProperty('--dock-scale', String(1 + influence * 0.38));
-      icon.style.setProperty('--dock-y', `${-influence * 9}px`);
+    event.currentTarget.querySelectorAll<HTMLElement>('.mobile-nav-item').forEach(item => {
+      const rect = item.getBoundingClientRect();
+      const center = rect.left + rect.width / 2;
+      const distance = Math.abs(event.clientX - center);
+      const influence = Math.max(0, 1 - distance / 190);
+      item.style.setProperty('--dock-scale', String(1 + influence * 0.18));
+      item.style.setProperty('--dock-y', `${-influence * 5}px`);
+      item.style.zIndex = String(2 + Math.round(influence * 3));
     });
   };
   const resetDockPointer = (event: ReactPointerEvent<HTMLElement>) => {
-    event.currentTarget.querySelectorAll<HTMLElement>('.dock-icon').forEach(icon => {
-      icon.style.setProperty('--dock-scale', '1');
-      icon.style.setProperty('--dock-y', '0px');
+    event.currentTarget.querySelectorAll<HTMLElement>('.mobile-nav-item').forEach(item => {
+      item.style.setProperty('--dock-scale', '1');
+      item.style.setProperty('--dock-y', '0px');
+      item.style.zIndex = '';
     });
   };
 
@@ -620,13 +709,14 @@ export default function App() {
         <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(Math.ceil((monday.getTime() - new Date(monday.getFullYear(), 0, 4).getTime()) / 604800000) + 1).padStart(2, '0')}</span><button aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}>‹</button><button aria-label="Nächste Woche" onClick={() => changeWeek(1)}>›</button></div>
         <div key={weekOffset} className={`weekday-grid week-swipe-in ${weekDirection === 1 ? 'from-next-week' : 'from-previous-week'}`} onPointerDown={startWeekSwipe} onPointerUp={finishWeekSwipe} onPointerCancel={() => { weekSwipeStartRef.current = null; }}>{dayNames.map((day, index) => {
           const date = weekDate(index); const key = localDateKey(date); const dayMeals = (plans[key] || []).map(id => recipes.find(recipe => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe));
-          return <article className="weekday-card" key={day}>
+          const dayBlocked = blockedDays.includes(key);
+          return <article className={`weekday-card${dayBlocked ? ' is-blocked' : ''}`} key={day} data-drop-day={index} onPointerDown={event => startDayHold(event, index)} onPointerMove={moveDayHold} onPointerUp={endDayHold} onPointerCancel={endDayHold} onContextMenu={event => event.preventDefault()}>
             <div className="weekday-title"><strong>{day}</strong><span>{dateText(date)}</span>{weekOffset === 0 && index === 0 && <span className="today-mark">DIESE WOCHE</span>}</div>
             <div className="weekday-row"><div className="weekday-content">{dayMeals.length ? dayMeals.map((recipe, mealIndex) => <div className="weekday-meal" style={{ background: recipe.color }} key={`${recipe.id}-${mealIndex}`}>
-              <button className="meal-open" onClick={() => openRecipe(recipe)}>{recipe.name}</button>
+              <button className="meal-open" onClick={event => { if (suppressDayMealClickRef.current) { event.preventDefault(); suppressDayMealClickRef.current = false; return; } openRecipe(recipe); }}>{recipe.name}</button>
               <button className="weekday-remove" aria-label={`${recipe.name} entfernen`} onClick={() => removeMeal(key, mealIndex)}>×</button>
             </div>) : <div className="weekday-empty">Noch nichts geplant</div>}</div>
-            {dayMeals.length === 0 && <button className="weekday-add" aria-label={`${day} hinzufügen`} onClick={() => beginAddingForDay(index)}>＋</button>}</div>
+            {dayMeals.length === 0 && <button className="weekday-add" aria-label={`${day} hinzufügen`} disabled={dayBlocked} onClick={() => beginAddingForDay(index)}>＋</button>}</div>
           </article>;
         })}</div>
       </section>}
@@ -652,7 +742,7 @@ export default function App() {
         <form className="additem" onSubmit={addShoppingItem}><input aria-label="Zutat hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Noch etwas hinzufügen …" /><button type="submit" aria-label="Zutat hinzufügen">＋</button></form>
       </section>}
     </main>
-    <nav className="mobile-nav" onPointerMove={handleDockPointerMove} onPointerLeave={resetDockPointer}>{(['plan', 'recipes', 'inspiration', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}><b className="dock-icon"><NavIcon view={id} /></b>{['Wochenplan', 'Kochbuch', 'Inspiration', 'Einkaufsliste'][index]}</button>)}</nav>
+    <nav className="mobile-nav" onPointerMove={handleDockPointerMove} onPointerLeave={resetDockPointer}>{(['plan', 'recipes', 'inspiration', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={`mobile-nav-item${view === id ? ' active' : ''}`} onClick={() => { setView(id); setTargetDay(null); }}><b className="dock-icon"><NavIcon view={id} /></b>{['Woche', 'Kochbuch', 'Inspiration', 'Liste'][index]}</button>)}</nav>
 
     {scheduleNotice && <div className="schedule-toast" role="status" aria-live="polite"><span className="schedule-toast-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.5" /></svg></span><span>{scheduleNotice}</span></div>}
 
@@ -662,6 +752,13 @@ export default function App() {
           const abbreviations = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
           return <button type="button" className={`week-radial-day${dragDay === index ? ' is-selected' : ''}`} data-day-label={day} data-drop-day={index} key={day} aria-label={`${day}, ${dateText(weekDate(index))}`} title={`${day}, ${dateText(weekDate(index))}`} onClick={() => addMeal(dragRecipe, index)}>{abbreviations[index]}</button>;
         })}
+      </section>
+    </div>}
+
+    {dayMenuIndex !== null && dayMenuCenter && <div className="week-radial-backdrop day-action-backdrop" onClick={closeDayMenu}>
+      <section className="week-radial day-action-radial" style={dayMenuCenter} role="dialog" aria-modal="true" aria-label={`Aktionen für ${dayNames[dayMenuIndex]}`} onClick={event => event.stopPropagation()}>
+        <button type="button" data-day-action="block" data-day-label={blockedDays.includes(localDateKey(weekDate(dayMenuIndex))) ? 'Entsperren' : 'Blockieren'} className={`week-radial-day day-action-option${dayActionHover === 'block' ? ' is-selected' : ''}`} aria-label={blockedDays.includes(localDateKey(weekDate(dayMenuIndex))) ? 'Tag entsperren' : 'Tag blockieren'}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></svg></button>
+        <button type="button" data-day-action="random" data-day-label="Zufällig" className={`week-radial-day day-action-option${dayActionHover === 'random' ? ' is-selected' : ''}`} aria-label={`Zufälliges Gericht für ${dayNames[dayMenuIndex]}`} disabled={blockedDays.includes(localDateKey(weekDate(dayMenuIndex)))}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.5h13l2.5 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12l2.5-4Z"/><path d="M3.5 7.5h17M10 5.5h4"/><circle cx="7.5" cy="16.5" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="16.5" cy="9.5" r=".8" fill="currentColor"/><circle cx="16.5" cy="15.5" r=".8" fill="currentColor"/></svg></button>
       </section>
     </div>}
 
