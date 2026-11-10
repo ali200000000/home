@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import './styles.css';
 import { supabase, type SharedAppData } from './supabase';
+import InspirationGrid from './InspirationGrid';
 
 type Recipe = {
   id: number;
@@ -28,11 +29,12 @@ const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Sa
 const monthShort = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'];
 const colors = ['#b5c5e8', '#ffb28f', '#aec8fb', '#eca9c4', '#c9b99f', '#b4b6c2'];
 const BrandLogo = () => <img className="brand-logo" src={`${import.meta.env.BASE_URL}mealy-logo.png`} alt="mealy" />;
-type ViewId = 'plan' | 'recipes' | 'shopping';
+type ViewId = 'plan' | 'recipes' | 'inspiration' | 'shopping';
 const NavIcon = ({ view }: { view: ViewId }) => <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
   {view === 'plan' && <><rect x="3.5" y="5.5" width="17" height="15" rx="2" /><path d="M7.5 3.5v4M16.5 3.5v4M3.5 9.5h17M7.5 13h.01M12 13h.01M16.5 13h.01M7.5 16.5h.01M12 16.5h.01" /></>}
   {view === 'recipes' && <><path d="M6 3.5v7M3.5 3.5v4a2.5 2.5 0 0 0 5 0v-4M6 10v10.5M15.5 3.5c-2 2.2-3 4.5-3 7v1h6v-1c0-2.5-1-4.8-3-7ZM15.5 11.5v9" /></>}
   {view === 'shopping' && <><path d="m3.5 6 1.5 1.5L7.5 5M10 6h10M3.5 12l1.5 1.5L7.5 11M10 12h10M3.5 18l1.5 1.5L7.5 17M10 18h10" /></>}
+  {view === 'inspiration' && <><path d="m12 2.5 2.3 6.2 6.2 2.3-6.2 2.3-2.3 6.2-2.3-6.2-6.2-2.3 6.2-2.3L12 2.5Z"/><path d="m19 16 .9 2.1L22 19l-2.1.9L19 22l-.9-2.1L16 19l2.1-.9L19 16Z"/></>}
 </svg>;
 const PencilIcon = () => <svg className="pencil-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4.5 19.5 3.8-.8L19 8a2.1 2.1 0 0 0-3-3L5.3 15.7l-.8 3.8Z" /><path d="m14.8 6.2 3 3" /></svg>;
 const PhotoIcon = () => <svg className="camera-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>;
@@ -100,23 +102,26 @@ function mergeSharedData(base: SharedAppData, local: SharedAppData, remote: Shar
 }
 
 export default function App() {
-  const [view, setView] = useState<'plan' | 'recipes' | 'shopping'>('plan');
+  const [view, setView] = useState<ViewId>('plan');
   const [recipes, setRecipes] = useState<Recipe[]>(() => initial('tellerRecipes', defaults));
   const [plans, setPlans] = useState<Record<string, number[]>>(() => initial('tellerPlans', {}));
   const [items, setItems] = useState<Item[]>(() => initial('tellerList', []));
   const [query, setQuery] = useState('');
   const [newItem, setNewItem] = useState('');
   const [weekOffset, setWeekOffset] = useState(0);
+  const [weekDirection, setWeekDirection] = useState<1 | -1>(1);
+  const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const monday = useMemo(() => new Date(2026, 10, 9 + weekOffset * 7), [weekOffset]);
   const shoppingMonday = useMemo(() => new Date(2026, 10, 9), []);
   function weekDate(index: number) { const date = new Date(monday); date.setDate(date.getDate() + index); return date; }
   const [targetDay, setTargetDay] = useState<number | null>(null);
+  const [scheduleNotice, setScheduleNotice] = useState('');
   const [dayPickerRecipe, setDayPickerRecipe] = useState<Recipe | null>(null);
   const [dragRecipe, setDragRecipe] = useState<Recipe | null>(null);
   const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
   const [dragDay, setDragDay] = useState<number | null>(null);
   const holdTimerRef = useRef<number | null>(null);
-  const holdPointerRef = useRef<{ id: number; x: number; y: number; recipe: Recipe } | null>(null);
+  const holdPointerRef = useRef<{ id: number; x: number; y: number; recipe: Recipe; element: HTMLElement } | null>(null);
   const holdActiveRef = useRef(false);
   const suppressRecipeClickRef = useRef(false);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -136,12 +141,43 @@ export default function App() {
   const [dataError, setDataError] = useState('');
   const [loaded, setLoaded] = useState(!supabase);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
+  const syncTriggerRef = useRef<HTMLButtonElement>(null);
+  const syncMenuRef = useRef<HTMLDivElement>(null);
   const currentDataRef = useRef(JSON.stringify({ recipes, plans, items }));
   const persistedDataRef = useRef<string | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingSavesRef = useRef(0);
+
+  useEffect(() => {
+    if (!scheduleNotice) return;
+    const timeout = window.setTimeout(() => setScheduleNotice(''), 2800);
+    return () => window.clearTimeout(timeout);
+  }, [scheduleNotice]);
+
+  useEffect(() => {
+    if (syncMenuOpen) requestAnimationFrame(() => syncMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus());
+  }, [syncMenuOpen]);
+
+  const handleSyncMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const menuItems = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    const currentIndex = menuItems.indexOf(document.activeElement as HTMLElement);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setSyncMenuOpen(false);
+      syncTriggerRef.current?.focus();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const direction = event.key === 'ArrowDown' ? 1 : -1;
+      menuItems[(currentIndex + direction + menuItems.length) % menuItems.length]?.focus();
+    } else if (event.key === 'Home') {
+      event.preventDefault(); menuItems[0]?.focus();
+    } else if (event.key === 'End') {
+      event.preventDefault(); menuItems.at(-1)?.focus();
+    }
+  };
 
   useEffect(() => {
     if (!supabase) return;
@@ -181,28 +217,39 @@ export default function App() {
     const client = supabase;
     if (!client || !session) return;
     let cancelled = false;
+    const abortController = new AbortController();
+    const timeout = window.setTimeout(() => abortController.abort(), 10000);
+    setLoaded(false);
     const load = async () => {
       setDataError('');
       setLoadFailed(false);
-      const { data, error } = await client.from('app_state').select('payload').eq('id', 1).maybeSingle();
-      if (cancelled) return;
-      if (error) {
+      try {
+        const { data, error } = await client.from('app_state').select('payload').eq('id', 1).abortSignal(abortController.signal).maybeSingle();
+        if (cancelled) return;
+        if (error) {
+          setLoadFailed(true);
+          setDataError(abortController.signal.aborted ? 'Supabase antwortet gerade nicht. Prüfe die Verbindung und versuche es erneut.' : `Datenbankzugriff fehlgeschlagen: ${error.message}`);
+        } else if (data?.payload) {
+          const payload = data.payload as SharedAppData;
+          const nextRecipes = payload.recipes as Recipe[] || defaults;
+          const nextPlans = payload.plans || {};
+          const nextItems = payload.items as Item[] || [];
+          persistedDataRef.current = JSON.stringify({ recipes: nextRecipes, plans: nextPlans, items: nextItems });
+          currentDataRef.current = persistedDataRef.current;
+          setRecipes(nextRecipes);
+          setPlans(nextPlans);
+          setItems(nextItems);
+        } else {
+          persistedDataRef.current = JSON.stringify({ recipes: defaults, plans: {}, items: [] });
+        }
+      } catch (error) {
+        if (cancelled) return;
         setLoadFailed(true);
-        setDataError(`Datenbankzugriff fehlgeschlagen: ${error.message}`);
-      } else if (data?.payload) {
-        const payload = data.payload as SharedAppData;
-        const nextRecipes = payload.recipes as Recipe[] || defaults;
-        const nextPlans = payload.plans || {};
-        const nextItems = payload.items as Item[] || [];
-        persistedDataRef.current = JSON.stringify({ recipes: nextRecipes, plans: nextPlans, items: nextItems });
-        currentDataRef.current = persistedDataRef.current;
-        setRecipes(nextRecipes);
-        setPlans(nextPlans);
-        setItems(nextItems);
-      } else {
-        persistedDataRef.current = JSON.stringify({ recipes: defaults, plans: {}, items: [] });
+        setDataError(abortController.signal.aborted ? 'Supabase antwortet gerade nicht. Prüfe die Verbindung und versuche es erneut.' : `Datenbankzugriff fehlgeschlagen: ${error instanceof Error ? error.message : 'Unbekannter Netzwerkfehler'}`);
+      } finally {
+        window.clearTimeout(timeout);
+        if (!cancelled) setLoaded(true);
       }
-      setLoaded(true);
     };
     void load();
     const channel = client.channel('shared-app-state')
@@ -224,8 +271,8 @@ export default function App() {
         setItems(merged.items as Item[]);
       })
       .subscribe();
-    return () => { cancelled = true; void client.removeChannel(channel); };
-  }, [session]);
+    return () => { cancelled = true; window.clearTimeout(timeout); abortController.abort(); void client.removeChannel(channel); };
+  }, [session, loadAttempt]);
 
   useEffect(() => {
     if (!loaded || loadFailed) return;
@@ -312,7 +359,7 @@ export default function App() {
   const visibleRecipes = recipes.filter(recipe => normalizeSearch([recipe.name, ...recipe.ingredients.flatMap(([name, amount]) => [name, amount])].join(' ')).includes(normalizedQuery));
   const currentWeekItems = items;
   const userInitial = (displayName.trim().charAt(0) || session?.user.email?.trim().charAt(0) || '?').toLocaleUpperCase('de-DE');
-  const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : 'Einkaufsliste';
+  const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : view === 'inspiration' ? 'Inspiration' : 'Einkaufsliste';
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -330,8 +377,8 @@ export default function App() {
   const addMeal = (recipe: Recipe, day: number) => {
     const key = localDateKey(weekDate(day));
     setPlans(previous => ({ ...previous, [key]: [...(previous[key] || []), recipe.id] }));
+    setScheduleNotice(`„${recipe.name}“ wurde für ${dayNames[day]} eingeplant.`);
     setTargetDay(null);
-    setView('plan');
     setDayPickerRecipe(null);
     setDragRecipe(null); setDragPoint(null); setDragDay(null);
     setModalMode(null);
@@ -346,14 +393,17 @@ export default function App() {
   const openDayPicker = (recipe: Recipe) => { setDayPickerRecipe(recipe); setModalMode(null); };
   const clearHoldTimer = () => { if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current); holdTimerRef.current = null; };
   const startRecipeHold = (event: ReactPointerEvent<HTMLElement>, recipe: Recipe) => {
+    if (targetDay !== null) return;
     if ((event.target as HTMLElement).closest('.recipe-actions button')) return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     clearHoldTimer();
     holdActiveRef.current = false;
-    holdPointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, recipe };
-    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Pointer capture can be unavailable in older Safari versions. */ }
+    holdPointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, recipe, element: event.currentTarget };
     holdTimerRef.current = window.setTimeout(() => {
+      const pointer = holdPointerRef.current;
+      if (!pointer || pointer.id !== event.pointerId) return;
       holdActiveRef.current = true;
+      try { pointer.element.setPointerCapture(pointer.id); } catch { /* Pointer capture can be unavailable in older Safari versions. */ }
       setDragRecipe(recipe); setDragDay(null); setDragPoint({ x: event.clientX, y: event.clientY });
       if (navigator.vibrate) navigator.vibrate(18);
     }, 480);
@@ -448,7 +498,8 @@ export default function App() {
       else if (targetDay !== null) {
         const dateKey = localDateKey(weekDate(targetDay));
         setPlans(previous => ({ ...previous, [dateKey]: [...(previous[dateKey] || []), savedRecipe.id] }));
-        setTargetDay(null); setView('plan'); setModalMode(null);
+        setScheduleNotice(`„${savedRecipe.name}“ wurde für ${dayNames[targetDay]} eingeplant.`);
+        setTargetDay(null); setModalMode(null);
       } else { setActiveRecipe(savedRecipe); setModalMode('view'); }
     } catch (error) {
       setDataError(error instanceof Error ? error.message : 'Rezept oder Foto konnte nicht gespeichert werden.');
@@ -470,6 +521,22 @@ export default function App() {
   };
   const toggleItem = (index: number) => setItems(previous => previous.map((item, i) => i === index ? { ...item, done: !item.done } : item));
   const beginAddingForDay = (day: number) => { setTargetDay(day); setView('recipes'); setQuery(''); };
+  const changeWeek = (direction: 1 | -1) => {
+    setWeekDirection(direction);
+    setWeekOffset(value => value + direction);
+  };
+  const startWeekSwipe = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0) || (event.target as HTMLElement).closest('button,input')) return;
+    weekSwipeStartRef.current = { x: event.clientX, y: event.clientY };
+  };
+  const finishWeekSwipe = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = weekSwipeStartRef.current;
+    weekSwipeStartRef.current = null;
+    if (!start || (event.target as HTMLElement).closest('button,input')) return;
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (Math.abs(deltaX) > 56 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25) changeWeek(deltaX < 0 ? 1 : -1);
+  };
   const handleDockPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType === 'touch' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     event.currentTarget.querySelectorAll<HTMLElement>('.dock-icon').forEach(icon => {
@@ -495,7 +562,7 @@ export default function App() {
   </section></main></div>;
 
   if (supabase && !session) return <div className="shell auth-shell"><main className="main auth-main"><section className="auth-panel login-panel">
-    <div className="brand login-brand"><BrandLogo /></div><h1>Hello!</h1>
+    <div className="brand login-brand"><img className="login-app-icon" src={`${import.meta.env.BASE_URL}apple-touch-icon.png`} alt="" /><span>mealy</span></div><h1>Hello!</h1>
     <p>Hier Mail und Passwort eintragen - dann geht´s los!</p>
     <form className="auth-form" onSubmit={signIn}>
       <label>Dein Name<input type="text" autoComplete="nickname" maxLength={40} required value={displayName} onChange={event => setDisplayName(event.target.value)} placeholder="z. B. Alex" /></label>
@@ -510,8 +577,8 @@ export default function App() {
     <aside className="sidebar">
       <div className="brand"><BrandLogo /></div>
       <nav className="nav">
-        {(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}>
-          <span className="ico"><NavIcon view={id} /></span>{['Wochenplan', 'Kochbuch', 'Einkaufsliste'][index]}
+        {(['plan', 'recipes', 'inspiration', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}>
+          <span className="ico"><NavIcon view={id} /></span><span className="nav-label">{['Wochenplan', 'Kochbuch', 'Inspiration', 'Einkaufsliste'][index]}</span>
         </button>)}
       </nav>
       <div className="household"><div className="avatar">{session ? userInitial : 'M'}</div><div><b>Unser Zuhause</b><small>Mit euch geteilt</small></div></div>
@@ -519,18 +586,25 @@ export default function App() {
     <main className="main">
       <header className="top"><div><h1 id="title">{title}</h1></div>
         <div className="topright">{supabase ? <div className="sync-menu-wrap">
-          <button className="share sync-trigger" aria-haspopup="menu" aria-expanded={syncMenuOpen} onClick={() => setSyncMenuOpen(open => !open)}>
+          <button ref={syncTriggerRef} className="share sync-trigger" aria-label="Angemeldete Personen und Abmelden" aria-haspopup="menu" aria-expanded={syncMenuOpen} onClick={() => setSyncMenuOpen(open => !open)}>
             <span className="stack"><span className="avatar">{userInitial}</span><span className="avatar plus">+</span></span>
           </button>
-          {syncMenuOpen && <><button className="sync-dismiss" aria-label="Menü schließen" onClick={() => setSyncMenuOpen(false)} /><div className="sync-popover" role="menu"><div className="sync-popover-status"><span className="sync-status-dot" />{saving ? 'Änderungen werden gespeichert' : 'Änderungen werden automatisch gespeichert'}</div><div className="sync-people-heading">Angemeldet</div><div className="sync-people">{onlineUsers.map(person => <div className="sync-person" key={person.id}><span className="sync-person-avatar">{person.name.trim().charAt(0).toLocaleUpperCase('de-DE')}</span><span>{person.name}</span><i aria-label="Online" /></div>)}</div><button className="signout" role="menuitem" onClick={() => { setSyncMenuOpen(false); void supabase?.auth.signOut(); }}>Abmelden</button></div></>}
+          {syncMenuOpen && <button className="sync-dismiss" aria-label="Menü schließen" tabIndex={-1} onClick={() => setSyncMenuOpen(false)} />}
+          <div ref={syncMenuRef} className={`sync-popover${syncMenuOpen ? ' is-open' : ''}`} role="menu" aria-label="Konto und Synchronisierung" aria-hidden={!syncMenuOpen} onKeyDown={handleSyncMenuKeyDown}>
+            <div className="sync-popover-status" role="group" aria-label="Speicherstatus"><span className="sync-status-dot" />{saving ? 'Änderungen werden gespeichert' : 'Änderungen werden automatisch gespeichert'}</div>
+            <div className="sync-people-heading" role="presentation">Angemeldet</div>
+            <div className="sync-people">{onlineUsers.length ? onlineUsers.map(person => <div className="sync-person" role="menuitem" aria-disabled="true" tabIndex={-1} key={person.id}><span className="sync-person-avatar">{person.name.trim().charAt(0).toLocaleUpperCase('de-DE')}</span><span>{person.name}</span><i aria-label="Online" /></div>) : <div className="sync-empty" role="presentation">Niemand sonst gerade online</div>}</div>
+            <div className="sync-separator" role="separator" />
+            <button className="signout" role="menuitem" tabIndex={-1} onClick={() => { setSyncMenuOpen(false); void supabase?.auth.signOut(); }}>Abmelden</button>
+          </div>
         </div> : <div className="share"><div className="stack"><span className="avatar">M</span><span className="avatar plus">+</span></div>Lokal gespeichert</div>}</div>
       </header>
       {dataError && <p role="alert" className="error-message">{dataError}</p>}
-      {loadFailed && <section className="panel"><p>Der Zugriff auf die gemeinsame Datenbank ist fehlgeschlagen. Prüfe die Mitgliedschaft in `app_members` und lade die Seite anschließend neu.</p></section>}
+      {loadFailed && <section className="panel"><p>{dataError || 'Der Zugriff auf die gemeinsame Datenbank ist fehlgeschlagen.'} Prüfe die Verbindung und die Mitgliedschaft in `app_members`.</p><button className="primary" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Erneut versuchen</button></section>}
 
       {view === 'plan' && <section className="view visible">
-        <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(Math.ceil((monday.getTime() - new Date(monday.getFullYear(), 0, 4).getTime()) / 604800000) + 1).padStart(2, '0')}</span><button aria-label="Vorherige Woche" onClick={() => setWeekOffset(value => value - 1)}>‹</button><button aria-label="Nächste Woche" onClick={() => setWeekOffset(value => value + 1)}>›</button></div>
-        <div className="weekday-grid">{dayNames.map((day, index) => {
+        <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(Math.ceil((monday.getTime() - new Date(monday.getFullYear(), 0, 4).getTime()) / 604800000) + 1).padStart(2, '0')}</span><button aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}>‹</button><button aria-label="Nächste Woche" onClick={() => changeWeek(1)}>›</button></div>
+        <div key={weekOffset} className={`weekday-grid week-swipe-in ${weekDirection === 1 ? 'from-next-week' : 'from-previous-week'}`} onPointerDown={startWeekSwipe} onPointerUp={finishWeekSwipe} onPointerCancel={() => { weekSwipeStartRef.current = null; }}>{dayNames.map((day, index) => {
           const date = weekDate(index); const key = localDateKey(date); const dayMeals = (plans[key] || []).map(id => recipes.find(recipe => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe));
           return <article className="weekday-card" key={day}>
             <div className="weekday-title"><strong>{day}</strong><span>{dateText(date)}</span>{weekOffset === 0 && index === 0 && <span className="today-mark">DIESE WOCHE</span>}</div>
@@ -552,6 +626,8 @@ export default function App() {
         </article>) : <div className="empty">Keine passenden Rezepte gefunden.</div>}</div>
       </section>}
 
+      {view === 'inspiration' && <section className="view visible inspiration-view"><InspirationGrid recipes={recipes} onSelect={openRecipe} /></section>}
+
       {view === 'shopping' && <section className="panel full-list">
         <div className="sectionhead"><h2>Aktueller Wocheneinkauf</h2><span className="count">{currentWeekItems.filter(item => item.done).length} / {currentWeekItems.length}</span></div>
         <div className="progress"><i style={{ width: `${currentWeekItems.length ? currentWeekItems.filter(item => item.done).length / currentWeekItems.length * 100 : 0}%` }} /></div>
@@ -563,7 +639,9 @@ export default function App() {
         <form className="additem" onSubmit={addShoppingItem}><input aria-label="Zutat hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Noch etwas hinzufügen …" /><button type="submit" aria-label="Zutat hinzufügen">＋</button></form>
       </section>}
     </main>
-    <nav className="mobile-nav" onPointerMove={handleDockPointerMove} onPointerLeave={resetDockPointer}>{(['plan', 'recipes', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}><b className="dock-icon"><NavIcon view={id} /></b>{['Wochenplan', 'Kochbuch', 'Einkaufsliste'][index]}</button>)}</nav>
+    <nav className="mobile-nav" onPointerMove={handleDockPointerMove} onPointerLeave={resetDockPointer}>{(['plan', 'recipes', 'inspiration', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}><b className="dock-icon"><NavIcon view={id} /></b>{['Wochenplan', 'Kochbuch', 'Inspiration', 'Einkaufsliste'][index]}</button>)}</nav>
+
+    {scheduleNotice && <div className="schedule-toast" role="status" aria-live="polite"><span className="schedule-toast-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.5" /></svg></span><span>{scheduleNotice}</span></div>}
 
     {dragRecipe && <div className="drag-sheet-backdrop" onClick={event => { if (event.target === event.currentTarget && !holdActiveRef.current) closeDragSheet(); }}>
       <section className="drag-day-sheet" role="dialog" aria-modal="true" aria-labelledby="drag-sheet-title">
