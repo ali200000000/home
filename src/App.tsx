@@ -517,8 +517,20 @@ export default function App() {
     holdPointerRef.current = null;
   };
   const cancelRecipeHold = (event: ReactPointerEvent<HTMLElement>) => {
-    if (holdPointerRef.current?.id !== event.pointerId) return;
-    clearHoldTimer(); holdPointerRef.current = null; holdActiveRef.current = false; setDragPoint(null); setDragAnchor(null); setDragRecipe(null); setDragDay(null);
+    const pointer = holdPointerRef.current;
+    if (pointer?.id !== event.pointerId) return;
+    clearHoldTimer();
+    const target = holdActiveRef.current ? document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-drop-day]') : null;
+    const day = target ? Number(target.dataset.dropDay) : null;
+    holdPointerRef.current = null;
+    holdActiveRef.current = false;
+    if (day !== null && Number.isInteger(day) && day >= 0 && day < dayNames.length) {
+      suppressRecipeClickRef.current = true;
+      window.setTimeout(() => { suppressRecipeClickRef.current = false; }, 700);
+      addMeal(pointer.recipe, day);
+      return;
+    }
+    setDragPoint(null); setDragAnchor(null); setDragRecipe(null); setDragDay(null);
   };
   const closeDragSheet = () => { clearHoldTimer(); holdPointerRef.current = null; holdActiveRef.current = false; setDragRecipe(null); setDragPoint(null); setDragAnchor(null); setDragDay(null); };
   const dragPointerActive = Boolean(dragRecipe && dragPoint);
@@ -696,7 +708,7 @@ export default function App() {
               <button className="meal-open" onClick={event => { if (suppressDayMealClickRef.current) { event.preventDefault(); suppressDayMealClickRef.current = false; return; } openRecipe(recipe); }}>{recipe.name}</button>
               <button className="weekday-remove" aria-label={`${recipe.name} entfernen`} onClick={() => removeMeal(key, mealIndex)}>×</button>
             </div>) : <div className="weekday-empty">Noch nichts geplant</div>}</div>
-            {dayMeals.length === 0 && <button className="weekday-add" aria-label={`${day} hinzufügen`} onClick={() => beginAddingForDay(index)}>＋</button>}</div>
+            <button className="weekday-add" aria-label={`${day} hinzufügen`} onClick={() => beginAddingForDay(index)}>＋</button></div>
           </article>;
         })}</div>
       </section>}
