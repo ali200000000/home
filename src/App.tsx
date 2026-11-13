@@ -621,7 +621,7 @@ export default function App() {
       if (!pointer || pointer.id !== event.pointerId) return;
       try { pointer.element.setPointerCapture(pointer.id); } catch { /* Pointer capture can be unavailable in older Safari versions. */ }
       setDayMenuIndex(index);
-      setDayMenuCenter({ left: Math.max(160, Math.min(event.clientX, window.innerWidth - 160)), top: Math.max(42, Math.min(event.clientY - 66, window.innerHeight - 42)) });
+      setDayMenuCenter({ left: Math.max(104, Math.min(event.clientX, window.innerWidth - 104)), top: Math.max(104, Math.min(event.clientY, window.innerHeight - 104)) });
       dayActionActiveRef.current = true;
       suppressDayMealClickRef.current = true;
       window.setTimeout(() => { suppressDayMealClickRef.current = false; }, 700);
@@ -870,6 +870,23 @@ export default function App() {
   };
   const dayMenuDateKey = dayMenuIndex === null ? null : localDateKey(weekDate(dayMenuIndex));
   const dayMenuLocked = dayMenuDateKey ? Boolean(lockedDays[dayMenuDateKey]) : false;
+  const dayActionPicker = useMemo(() => {
+    if (!dayMenuCenter) return null;
+    const center = { ...dayMenuCenter };
+    const towardX = window.innerWidth / 2 - center.left;
+    const towardY = window.innerHeight / 2 - center.top;
+    const facing = Math.hypot(towardX, towardY) < 40 ? -Math.PI / 2 : Math.atan2(towardY, towardX);
+    const radius = 112;
+    const offsetAt = (angle: number) => ({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+    const random = dayMenuLocked ? null : offsetAt(facing - 13 * Math.PI / 180);
+    const lock = offsetAt(facing + (dayMenuLocked ? 0 : 13 * Math.PI / 180));
+    const offsets = [random, lock].filter((offset): offset is { x: number; y: number } => Boolean(offset));
+    const pad = 38;
+    const xs = offsets.map(offset => center.left + offset.x); const ys = offsets.map(offset => center.top + offset.y);
+    center.left += Math.max(0, pad - Math.min(...xs)) - Math.max(0, Math.max(...xs) - (window.innerWidth - pad));
+    center.top += Math.max(0, pad - Math.min(...ys)) - Math.max(0, Math.max(...ys) - (window.innerHeight - pad));
+    return { center, random, lock };
+  }, [dayMenuCenter, dayMenuLocked]);
 
   if (import.meta.env.PROD && !supabase) return <div className="shell"><main className="main"><section className="panel auth-panel">
     <div className="brand"><BrandLogo /></div><h1>Supabase noch nicht verbunden</h1>
@@ -986,10 +1003,10 @@ export default function App() {
       </section>
     </div>}
 
-    {dayMenuIndex !== null && dayMenuCenter && <div className="week-radial-backdrop day-action-backdrop" onClick={closeDayMenu}>
-      <section className="week-radial day-action-radial" style={dayMenuCenter} role="dialog" aria-modal="true" aria-label={`Aktionen für ${dayNames[dayMenuIndex]}`} onClick={event => event.stopPropagation()}>
-        {!dayMenuLocked && <button type="button" data-day-action="random" data-day-label="Zufällig" className={`week-radial-day day-action-option${dayActionHover === 'random' ? ' is-selected' : ''}${dayActionConfirm === 'random' ? ' is-confirming' : ''}`} aria-label={`Zufälliges Gericht für ${dayNames[dayMenuIndex]}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.5h13l2.5 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12l2.5-4Z"/><path d="M3.5 7.5h17M10 5.5h4"/><circle cx="7.5" cy="16.5" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="16.5" cy="9.5" r=".8" fill="currentColor"/><circle cx="16.5" cy="15.5" r=".8" fill="currentColor"/></svg></button>}
-        {weekOffset === 0 && <button type="button" data-day-action="lock" data-day-label={dayMenuLocked ? 'Freigeben' : 'Sperren'} className={`week-radial-day day-action-option day-lock-option${dayActionHover === 'lock' ? ' is-selected' : ''}${dayActionConfirm === 'lock' ? ' is-confirming' : ''}${dayMenuLocked ? ' is-locked' : ''}`} aria-label={`${dayMenuLocked ? 'Tag freigeben' : 'Tag sperren'}: ${dayNames[dayMenuIndex]}`}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path className="lock-shackle-open" d="M8 10V7a4 4 0 0 1 7.4-2.2"/><path className="lock-shackle-closed" d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></button>}
+    {dayMenuIndex !== null && dayActionPicker && <div className="week-radial-backdrop day-action-backdrop" onClick={closeDayMenu}>
+      <section className="week-radial day-action-radial" style={dayActionPicker.center} role="dialog" aria-modal="true" aria-label={`Aktionen für ${dayNames[dayMenuIndex]}`} onClick={event => event.stopPropagation()}>
+        {!dayMenuLocked && dayActionPicker.random && <button type="button" style={{ '--x': `${dayActionPicker.random.x}px`, '--y': `${dayActionPicker.random.y}px`, '--order': 0 } as CSSProperties} data-day-action="random" data-day-label="Zufällig" className={`week-radial-day day-action-option${dayActionHover === 'random' ? ' is-selected' : ''}${dayActionConfirm === 'random' ? ' is-confirming' : ''}`} aria-label={`Zufälliges Gericht für ${dayNames[dayMenuIndex]}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.5h13l2.5 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12l2.5-4Z"/><path d="M3.5 7.5h17M10 5.5h4"/><circle cx="7.5" cy="16.5" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="16.5" cy="9.5" r=".8" fill="currentColor"/><circle cx="16.5" cy="15.5" r=".8" fill="currentColor"/></svg></button>}
+        {weekOffset === 0 && <button type="button" style={{ '--x': `${dayActionPicker.lock.x}px`, '--y': `${dayActionPicker.lock.y}px`, '--order': 1 } as CSSProperties} data-day-action="lock" data-day-label={dayMenuLocked ? 'Freigeben' : 'Sperren'} className={`week-radial-day day-action-option day-lock-option${dayActionHover === 'lock' ? ' is-selected' : ''}${dayActionConfirm === 'lock' ? ' is-confirming' : ''}${dayMenuLocked ? ' is-locked' : ''}`} aria-label={`${dayMenuLocked ? 'Tag freigeben' : 'Tag sperren'}: ${dayNames[dayMenuIndex]}`}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path className="lock-shackle-open" d="M8 10V7a4 4 0 0 1 7.4-2.2"/><path className="lock-shackle-closed" d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></button>}
       </section>
     </div>}
 
