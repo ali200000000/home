@@ -2,18 +2,6 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 
-// iOS gibt einer Web-App vom Home-Bildschirm unten teils weniger Layoutfläche als der Bildschirm hat.
-// Den Rest als --app-gap melden, damit die App bis an die Unterkante reicht (styles.css).
-const updateAppGap = () => {
-  const standalone = matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-  const portrait = innerHeight > innerWidth;
-  const gap = standalone && portrait ? screen.height - innerHeight : 0;
-  // Nur plausible Streifen übernehmen; große Werte wären z. B. eine offene Tastatur.
-  document.documentElement.style.setProperty('--app-gap', `${gap > 0 && gap < 120 ? gap : 0}px`);
-};
-updateAppGap();
-window.addEventListener('resize', updateAppGap);
-
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
@@ -49,7 +37,7 @@ document.addEventListener('click', event => {
     ['Sichtbar', `${Math.round(visualViewport?.width ?? 0)}×${Math.round(visualViewport?.height ?? 0)}`],
     ['html', `${document.documentElement.clientHeight}`],
     ['Ränder o/u', `${insets.paddingTop} / ${insets.paddingBottom}`],
-    ['Ausgleich unten', getComputedStyle(document.documentElement).getPropertyValue('--app-gap')],
+    ['App-Höhe', getComputedStyle(document.documentElement).getPropertyValue('--app-height')],
     ['shell', rect('.shell')],
     ['Dock', rect('.mobile-nav')],
   ];
