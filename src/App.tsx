@@ -16,6 +16,7 @@ type Recipe = {
 };
 type Item = { name: string; done: boolean; qty?: string; cat?: string; auto?: boolean; key?: string };
 type ModalMode = 'view' | 'edit' | 'new' | null;
+type AppTheme = 'light' | 'dark';
 
 const defaults: Recipe[] = [
   { id: 1, name: 'Zitronen-Ricotta-Pasta', emoji: '', color: '#b5c5e8', time: '25 min', tag: 'Vegetarisch', ingredients: [['Pasta', '300 g'], ['Ricotta', '150 g'], ['Zitrone', '1 Stück'], ['Babyspinat', '100 g'], ['Parmesan', '50 g']] },
@@ -221,6 +222,16 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [recipeFilter, setRecipeFilter] = useState('Alle');
   const [filterOpen, setFilterOpen] = useState(false);
+  const [toolbarActionsExpanded, setToolbarActionsExpanded] = useState(false);
+  const [theme, setTheme] = useState<AppTheme>(() => {
+    const savedTheme = initial<AppTheme | null>('tellerTheme', null);
+    if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('tellerTheme', theme);
+  }, [theme]);
   const [newItem, setNewItem] = useState('');
   const [weekOffset, setWeekOffset] = useState(0);
   const [weekDirection, setWeekDirection] = useState<1 | -1>(1);
@@ -266,6 +277,7 @@ export default function App() {
   const [imagePreview, setImagePreview] = useState('');
   const [recipeSaving, setRecipeSaving] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [showWelcome, setShowWelcome] = useState(true);
   const [displayName, setDisplayName] = useState('');
   const [onlineUsers, setOnlineUsers] = useState<{ id: string; name: string }[]>([]);
   const [email, setEmail] = useState('');
@@ -347,11 +359,11 @@ export default function App() {
   }, [modalMode]);
 
   useEffect(() => {
-    if (syncMenuOpen) requestAnimationFrame(() => syncMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus());
+    if (syncMenuOpen) requestAnimationFrame(() => syncMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"],[role="menuitemcheckbox"]')?.focus());
   }, [syncMenuOpen]);
 
   const handleSyncMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const menuItems = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    const menuItems = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"],[role="menuitemcheckbox"]'));
     const currentIndex = menuItems.indexOf(document.activeElement as HTMLElement);
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -819,7 +831,6 @@ export default function App() {
   const removeItem = (index: number) => setItems(previous => previous.filter((item, i) => i !== index || item.auto));
   // Rezeptzutaten kommen aus dem Wochenplan und bleiben; nur eigene Einträge werden entfernt.
   const clearDoneItems = () => setItems(previous => previous.filter(item => item.auto || !item.done));
-  const beginAddingForDay = (day: number) => { setTargetDay(day); setView('recipes'); setQuery(''); };
   const changeWeek = (direction: 1 | -1) => {
     setWeekDirection(direction);
     setWeekOffset(value => value + direction);
@@ -863,6 +874,16 @@ export default function App() {
     <p className="setup-note">Im Client darf nur der Publishable-Key stehen, niemals ein Service-Role-Key.</p>
   </section></main></div>;
 
+  if (supabase && !session && showWelcome) return <div className="shell auth-shell welcome-shell"><main className="main auth-main welcome-main"><section className="welcome-panel" aria-labelledby="welcome-title">
+    <div className="brand login-brand welcome-brand"><img className="login-app-icon" src={`${import.meta.env.BASE_URL}apple-touch-icon.png`} alt="" /><span>mealy</span></div>
+    <p className="welcome-kicker">GEMEINSAM PLANEN</p><h1 id="welcome-title">Was gibt’s heute?</h1><p className="welcome-copy">Ideen sammeln, Rezepte wählen und die Woche ganz entspannt planen.</p>
+    <div className="welcome-marquees" aria-hidden="true">
+      <div className="welcome-marquee"><div className="welcome-marquee-track">{['PASTA', 'GEMEINSAM KOCHEN', 'LIEBLINGSGERICHTE', 'WOCHENPLAN', 'PASTA', 'GEMEINSAM KOCHEN', 'LIEBLINGSGERICHTE', 'WOCHENPLAN'].map((item, index) => <span key={`first-${index}`}>{item}</span>)}</div></div>
+      <div className="welcome-marquee welcome-marquee-reverse"><div className="welcome-marquee-track">{['EINFACH PLANEN', 'GUT ESSEN', 'EINKAUFSLISTE', 'MEAL IDEAS', 'EINFACH PLANEN', 'GUT ESSEN', 'EINKAUFSLISTE', 'MEAL IDEAS'].map((item, index) => <span key={`second-${index}`}>{item}</span>)}</div></div>
+    </div>
+    <button type="button" className="welcome-start" onClick={() => setShowWelcome(false)}>Let’s go <span aria-hidden="true">→</span></button>
+  </section></main></div>;
+
   if (supabase && !session) return <div className="shell auth-shell"><main className="main auth-main"><section className="auth-panel login-panel">
     <div className="brand login-brand"><img className="login-app-icon" src={`${import.meta.env.BASE_URL}apple-touch-icon.png`} alt="" /><span>mealy</span></div><h1>Hello!</h1>
     <p>Hier Mail und Passwort eintragen - dann geht´s los!</p>
@@ -901,13 +922,14 @@ export default function App() {
     </aside>
     <main className="main">
       <header className="top"><div><h1 id="title">{title}</h1></div>
-        <div className="topright">{supabase ? <div className="sync-menu-wrap">
+        <div className={`topright${view === 'plan' ? ' plan-topright' : ''}`}>{supabase ? <div className="sync-menu-wrap">
           <button ref={syncTriggerRef} className="share sync-trigger" aria-label="Angemeldete Personen und Abmelden" aria-haspopup="menu" aria-expanded={syncMenuOpen} onClick={() => setSyncMenuOpen(open => !open)}>
             <span className="stack"><span className="avatar">{userInitial}</span><span className="avatar plus">+</span></span>
           </button>
           {syncMenuOpen && <button className="sync-dismiss" aria-label="Menü schließen" tabIndex={-1} onClick={() => setSyncMenuOpen(false)} />}
           <div ref={syncMenuRef} className={`sync-popover${syncMenuOpen ? ' is-open' : ''}`} role="menu" aria-label="Konto und Synchronisierung" aria-hidden={!syncMenuOpen} onKeyDown={handleSyncMenuKeyDown}>
             <div className="sync-popover-status" role="status" aria-live="polite" aria-label={saving ? 'Änderungen werden gespeichert' : 'Änderungen werden automatisch gespeichert'}><span className={`sync-status-dot${saving ? ' is-saving' : ''}`} /><span>Automatisches Speichern aktiv</span></div>
+            <div className="theme-mode-row"><div><b>Darstellung</b><small>{theme === 'dark' ? 'Dunkelmodus' : 'Hellmodus'}</small></div><button type="button" role="menuitemcheckbox" tabIndex={-1} className={`theme-switch${theme === 'dark' ? ' is-dark' : ''}`} aria-label={theme === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'} aria-checked={theme === 'dark'} onClick={() => setTheme(current => current === 'dark' ? 'light' : 'dark')}><span className="theme-switch-sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg></span><span className="theme-switch-moon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 15.3A8.4 8.4 0 0 1 8.7 4 8.5 8.5 0 1 0 20 15.3Z" /></svg></span><span className="theme-switch-thumb" aria-hidden="true" /></button></div>
             <div className="sync-people-heading" role="presentation">Angemeldet</div>
             <div className="sync-people">{onlineUsers.length ? onlineUsers.map(person => <div className="sync-person" role="menuitem" aria-disabled="true" tabIndex={-1} key={person.id}><span className="sync-person-avatar">{person.name.trim().charAt(0).toLocaleUpperCase('de-DE')}</span><span>{person.name}</span><i aria-label="Online" /></div>) : <div className="sync-empty" role="presentation">Niemand sonst gerade online</div>}</div>
             <div className="sync-separator" role="separator" />
@@ -919,7 +941,7 @@ export default function App() {
       {loadFailed && <section className="panel"><p>{dataError || 'Der Zugriff auf die gemeinsame Datenbank ist fehlgeschlagen.'} Prüfe die Verbindung und die Mitgliedschaft in `app_members`.</p><button className="primary" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Erneut versuchen</button></section>}
 
       {view === 'plan' && <section className="view visible">
-        <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(isoWeek(monday)).padStart(2, '0')}</span><button aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}>‹</button><button aria-label="Nächste Woche" onClick={() => changeWeek(1)}>›</button></div>
+        <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(isoWeek(monday)).padStart(2, '0')}</span><button className="week-nav-button week-nav-button-prev" aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}><span className="week-nav-chevron" aria-hidden="true" /></button><button className="week-nav-button week-nav-button-next" aria-label="Nächste Woche" onClick={() => changeWeek(1)}><span className="week-nav-chevron week-nav-chevron-next" aria-hidden="true" /></button></div>
         <div key={weekOffset} className={`weekday-grid week-swipe-in ${weekDirection === 1 ? 'from-next-week' : 'from-previous-week'}`} onPointerDown={startWeekSwipe} onPointerUp={finishWeekSwipe} onPointerCancel={() => { weekSwipeStartRef.current = null; }}>{dayNames.map((day, index) => {
           const date = weekDate(index); const key = localDateKey(date); const dayMeals = (plans[key] || []).map(id => recipes.find(recipe => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe)); const dayLocked = Boolean(lockedDays[key]);
           const swipeDx = daySwipe?.index === index ? daySwipe.dx : 0;
@@ -932,13 +954,13 @@ export default function App() {
               <button className="meal-open" onClick={event => { if (suppressDayMealClickRef.current) { event.preventDefault(); suppressDayMealClickRef.current = false; return; } openRecipe(recipe); }}>{randomMealAnimation?.date === key && randomMealAnimation.recipeId === recipe.id ? <HyperText key={randomMealAnimation.id} text={recipe.name} /> : recipe.name}</button>
               <button className="weekday-remove" style={{ '--meal-color': recipe.color } as CSSProperties} aria-label={`${recipe.name} entfernen`} onClick={() => removeMeal(key, mealIndex)}><WeekActionIcon action="remove" /></button>
             </div>) : <div className="weekday-empty">{dayLocked ? 'Kein Essen benötigt' : 'Noch nichts geplant'}</div>}</div>
-            {dayMeals.length === 0 && !dayLocked && <button className="weekday-add" aria-label={`${day} hinzufügen`} onClick={() => beginAddingForDay(index)}><WeekActionIcon action="add" /></button>}</div>
+            {dayMeals.length === 0 && !dayLocked && <button className="weekday-add" aria-label={`${day}: Rezept auswählen`} onClick={() => { setTargetDay(index); setView('recipes'); setQuery(''); }}><span className="weekday-add-icon" aria-hidden="true" /></button>}</div>
           </article></div>;
         })}</div>
       </section>}
 
       {view === 'recipes' && <section className="view visible">
-        <div className="toolbar"><label className="recipe-search"><SearchIcon /><input className="search" aria-label="Rezepte durchsuchen" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /></label><div className="recipe-toolbar-actions"><button className="pill recipe-add-button" aria-label="Rezept hinzufügen" onClick={openNewRecipe}><WeekActionIcon action="add" /></button><div className="recipe-filter-wrap"><button className={`pill recipe-filter-button${filterOpen || recipeFilter !== 'Alle' ? ' is-active' : ''}`} aria-label="Rezepte filtern" aria-expanded={filterOpen} onClick={() => setFilterOpen(open => !open)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4" /></svg></button>{filterOpen && <div className="recipe-filter-menu" role="group" aria-label="Rezeptkategorie filtern">{recipeFilters.map(filter => <button type="button" key={filter} className={recipeFilter === filter ? 'selected' : ''} onClick={() => { setRecipeFilter(filter); setFilterOpen(false); }}>{filter}{recipeFilter === filter && <span aria-hidden="true">✓</span>}</button>)}</div>}</div><div className="recipe-layout-switch" role="tablist" aria-label="Darstellung der Rezepte">{([{ id: 'card', label: 'Kachelansicht' }, { id: 'list', label: 'Listenansicht' }] as const).map(option => <button type="button" role="tab" key={option.id} aria-label={option.label} title={option.label} aria-selected={recipeLayout === option.id} className={recipeLayout === option.id ? 'active' : ''} onClick={() => setRecipeLayout(option.id)}><RecipeLayoutIcon layout={option.id} /></button>)}</div></div></div>
+        <div className="toolbar"><label className="recipe-search"><SearchIcon /><input className="search" aria-label="Rezepte durchsuchen" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /></label><div className={`recipe-toolbar-actions${toolbarActionsExpanded ? ' is-expanded' : ''}`} inert={!toolbarActionsExpanded}><button className="pill recipe-add-button" aria-label="Rezept hinzufügen" onClick={openNewRecipe}><WeekActionIcon action="add" /></button><div className="recipe-filter-wrap"><button className={`pill recipe-filter-button${filterOpen || recipeFilter !== 'Alle' ? ' is-active' : ''}`} aria-label="Rezepte filtern" aria-expanded={filterOpen} onClick={() => setFilterOpen(open => !open)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4" /></svg></button>{filterOpen && <div className="recipe-filter-menu" role="group" aria-label="Rezeptkategorie filtern">{recipeFilters.map(filter => <button type="button" key={filter} className={recipeFilter === filter ? 'selected' : ''} onClick={() => { setRecipeFilter(filter); setFilterOpen(false); }}>{filter}{recipeFilter === filter && <span aria-hidden="true">✓</span>}</button>)}</div>}</div><div className="recipe-layout-switch" role="tablist" aria-label="Darstellung der Rezepte">{([{ id: 'card', label: 'Kachelansicht' }, { id: 'list', label: 'Listenansicht' }] as const).map(option => <button type="button" role="tab" key={option.id} aria-label={option.label} title={option.label} aria-selected={recipeLayout === option.id} className={recipeLayout === option.id ? 'active' : ''} onClick={() => setRecipeLayout(option.id)}><RecipeLayoutIcon layout={option.id} /></button>)}</div></div><button type="button" className={`recipe-toolbar-toggle${toolbarActionsExpanded || recipeFilter !== 'Alle' ? ' is-active' : ''}`} aria-label={toolbarActionsExpanded ? 'Werkzeuge einklappen' : 'Werkzeuge ausklappen'} aria-expanded={toolbarActionsExpanded} onClick={() => { setToolbarActionsExpanded(expanded => !expanded); if (toolbarActionsExpanded) setFilterOpen(false); }}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg></button></div>
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
         <div className={`recipegrid recipe-reveal-grid recipe-layout-${recipeLayout}`}>{visibleRecipes.length ? visibleRecipes.map(recipe => <article className={`recipe-card recipe-card-reveal ${dragRecipe?.id === recipe.id && dragPoint ? 'long-press-active' : ''}`} key={recipe.id} onPointerDown={event => startRecipeHold(event, recipe)} onPointerMove={moveRecipeHold} onPointerUp={endRecipeHold} onPointerCancel={cancelRecipeHold} onContextMenu={event => event.preventDefault()} onDragStart={event => event.preventDefault()}>
           <button className="recipe-card-open" onClick={event => { if (suppressRecipeClickRef.current) { event.preventDefault(); suppressRecipeClickRef.current = false; return; } targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe); }}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}>{recipe.imageUrl && <img draggable="false" src={recipe.imageUrl} alt={`Foto von ${recipe.name}`} />}</div><span className="recipe-card-gradient" aria-hidden="true" /><div className="recipe-copy recipe-card-reveal-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
@@ -956,7 +978,7 @@ export default function App() {
           </label> : null)}</div>
         </section>)}</div> : <div className="shopping-empty">Noch keine Einkäufe. Geplante Rezepte ergänzen ihre Zutaten automatisch.</div>}
         {currentWeekItems.some(item => !item.auto && item.done) && <button type="button" className="shopping-clear-done" onClick={clearDoneItems}>Erledigte eigene Einträge entfernen</button>}
-        <form className="shopping-add" onSubmit={addShoppingItem}><input aria-label="Zutat hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Noch etwas hinzufügen …" /><button type="submit" aria-label="Zutat hinzufügen"><WeekActionIcon action="add" /></button></form>
+        <form className="shopping-add" onSubmit={addShoppingItem}><input aria-label="Zutat hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Noch etwas hinzufügen …" /><button type="submit" aria-label="Zutat hinzufügen"><span className="shopping-add-icon" aria-hidden="true" /></button></form>
       </section>}
     </main>
     <nav className="mobile-nav" onPointerMove={handleDockPointerMove} onPointerLeave={resetDockPointer}>{(['plan', 'recipes', 'inspiration', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={`mobile-nav-item${view === id ? ' active' : ''}`} onClick={() => { setView(id); setTargetDay(null); }}><b className="dock-icon"><NavIcon view={id} /></b>{['Woche', 'Kochbuch', 'Inspiration', 'Liste'][index]}</button>)}</nav>
@@ -975,7 +997,7 @@ export default function App() {
       </section>
     </div>}
 
-    {modalMode && <div className={`modalback open${modalMode === 'new' || modalMode === 'edit' ? ' editor-modal-backdrop' : ''}${modalMode === 'view' ? ' recipe-detail-backdrop' : ''}`} onClick={() => setModalMode(null)}><section className={`modal${modalMode === 'new' || modalMode === 'edit' ? ' editor-modal' : ''}${modalMode === 'view' ? ' recipe-detail-modal' : ''}${sheetIsDragging ? ' is-sheet-dragging' : ''}${sheetExpanded ? ' is-sheet-expanded' : ''}`} style={sheetDragOffset ? { transform: `translateY(${sheetDragOffset}px)` } : undefined} role="dialog" aria-modal="true" aria-label={modalMode === 'new' || modalMode === 'edit' ? 'Rezept bearbeiten' : undefined} aria-labelledby={modalMode === 'new' || modalMode === 'edit' ? undefined : 'recipe-detail-title'} onClick={event => event.stopPropagation()}><div className="modal-scroll-area">
+    {modalMode && <div className={`modalback open recipe-dialog-backdrop${modalMode === 'new' || modalMode === 'edit' ? ' editor-modal-backdrop' : ''}${modalMode === 'view' ? ' recipe-detail-backdrop' : ''}`} onClick={() => setModalMode(null)}><section className={`modal recipe-dialog-modal${modalMode === 'new' || modalMode === 'edit' ? ' editor-modal' : ''}${modalMode === 'view' ? ' recipe-detail-modal' : ''}${sheetIsDragging ? ' is-sheet-dragging' : ''}${sheetExpanded ? ' is-sheet-expanded' : ''}`} style={sheetDragOffset ? { transform: `translateY(${sheetDragOffset}px)` } : undefined} role="dialog" aria-modal="true" aria-label={modalMode === 'new' ? 'Neues Rezept' : modalMode === 'edit' ? 'Rezept bearbeiten' : undefined} aria-labelledby={modalMode === 'view' ? 'recipe-detail-title' : undefined} onClick={event => event.stopPropagation()}><div className="modal-scroll-area">
       {modalMode === 'view' && activeRecipe && <>
         <div className="recipe-detail-grab" aria-hidden="true" onPointerDown={startSheetDrag} onPointerMove={moveSheetDrag} onPointerUp={endSheetDrag} onPointerCancel={endSheetDrag} />
         <header className="recipe-detail-head" onPointerDown={startSheetDrag} onPointerMove={moveSheetDrag} onPointerUp={endSheetDrag} onPointerCancel={endSheetDrag}><div className="recipe-detail-top-actions"><button className="detail-icon-button recipe-detail-close" onClick={() => openEditRecipe(activeRecipe)} aria-label="Rezept bearbeiten"><PencilIcon /></button><button className="detail-icon-button recipe-detail-close" onClick={() => setModalMode(null)} aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div><div className="recipe-detail-icon" style={{ background: activeRecipe.color }}>{activeRecipe.imageUrl ? <img src={activeRecipe.imageUrl} alt={`Foto von ${activeRecipe.name}`} /> : <NavIcon view="recipes" />}</div><h2 id="recipe-detail-title">{activeRecipe.name}</h2><p>{activeRecipe.time} · {activeRecipe.ingredients.length} Zutaten</p></header>
@@ -983,18 +1005,14 @@ export default function App() {
       </>}
       {(modalMode === 'new' || modalMode === 'edit') && <>
         <div className="recipe-editor-grab" aria-hidden="true" onPointerDown={startSheetDrag} onPointerMove={moveSheetDrag} onPointerUp={endSheetDrag} onPointerCancel={endSheetDrag} />
-        <header className="recipe-editor-head" onPointerDown={startSheetDrag} onPointerMove={moveSheetDrag} onPointerUp={endSheetDrag} onPointerCancel={endSheetDrag}><button className="detail-icon-button recipe-detail-close" onClick={() => setModalMode(null)} aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button><h2>{modalMode === 'new' ? 'Neues Rezept' : 'Rezept bearbeiten'}</h2><p>Alle Angaben kannst du jederzeit ändern.</p></header>
-        <form className="recipe-form" onSubmit={saveRecipe}>
-          <label className="recipe-name-field"><input className="search recipe-name-input" required value={formName} onChange={event => setFormName(event.target.value)} placeholder="Rezeptname" aria-label="Rezeptname" /></label>
-          <label className="eyebrow">REZEPTFOTO<div className={`recipe-photo-frame${imagePreview ? ' has-image' : ''}`}>{imagePreview && <img className="recipe-image-preview" src={imagePreview} alt="Vorschau des Rezeptfotos" />}<span className="recipe-photo-control"><input className="recipe-photo-input" type="file" accept="image/*" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith('image/')) { setDataError('Bitte wähle eine Bilddatei.'); return; } if (file.size > 8 * 1024 * 1024) { setDataError('Das Bild darf höchstens 8 MB groß sein.'); return; } setFormImage(file); setImagePreview(URL.createObjectURL(file)); }} /><span className="recipe-photo-button"><PhotoIcon />Foto auswählen</span></span></div></label>
-          <fieldset className="time-slider-field"><legend className="eyebrow">ZUBEREITUNGSZEIT</legend><output className="time-slider-value" aria-live="polite">{(['schnell', 'mittel', 'lang'] as const)[formTimeLevel]}</output><div className={`adaptive-time-slider level-${formTimeLevel}`}><div className="time-slider-dots" aria-hidden="true"><i /><i /><i /></div><input aria-label="Zubereitungszeit" type="range" min="0" max="2" step="1" value={formTimeLevel} onChange={event => setFormTimeLevel(Number(event.target.value))} /><span className="time-slider-thumb" aria-hidden="true" /></div><div className="time-slider-labels" aria-hidden="true"><span>schnell</span><span>mittel</span><span>lang</span></div></fieldset>
-          <div className="eyebrow">ZUTATEN</div>
-          <div className="ingredient-edit-list">{formIngredients.map(([name, amount], index) => <div className="ingredient-edit-row" key={index}>
+        <header className="recipe-detail-head recipe-editor-detail-head" onPointerDown={startSheetDrag} onPointerMove={moveSheetDrag} onPointerUp={endSheetDrag} onPointerCancel={endSheetDrag}><div className="recipe-detail-top-actions"><button className="detail-icon-button recipe-detail-close" onClick={() => setModalMode(null)} aria-label="Schließen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button></div><label className={`recipe-detail-icon recipe-editor-photo-icon${imagePreview ? ' has-image' : ''}`} aria-label="Rezeptfoto auswählen">{imagePreview ? <img src={imagePreview} alt="Vorschau des Rezeptfotos" /> : <PhotoIcon />}<input className="recipe-photo-input" type="file" accept="image/*" aria-label="Rezeptfoto auswählen" onChange={event => { const file = event.target.files?.[0]; if (!file) return; if (!file.type.startsWith('image/')) { setDataError('Bitte wähle eine Bilddatei.'); return; } if (file.size > 8 * 1024 * 1024) { setDataError('Das Bild darf höchstens 8 MB groß sein.'); return; } setFormImage(file); setImagePreview(URL.createObjectURL(file)); }} /><span className="recipe-editor-photo-edit" aria-hidden="true"><PhotoIcon /></span></label><label className="recipe-detail-name-field"><input form="recipe-editor-form" className="recipe-name-input" required value={formName} onChange={event => setFormName(event.target.value)} placeholder="Rezeptname" aria-label="Rezeptname" /></label><p>{(['schnell', 'mittel', 'lang'] as const)[formTimeLevel]} · {formIngredients.filter(([name]) => name.trim()).length} Zutaten</p></header>
+        <form id="recipe-editor-form" className="recipe-form recipe-detail-editor-form" onSubmit={saveRecipe}>
+          <fieldset className="time-slider-field recipe-editor-time"><legend className="eyebrow">ZUBEREITUNGSZEIT</legend><div className={`adaptive-time-slider level-${formTimeLevel}`}><div className="time-slider-dots" aria-hidden="true"><i /><i /><i /></div><input aria-label="Zubereitungszeit" type="range" min="0" max="2" step="1" value={formTimeLevel} onChange={event => setFormTimeLevel(Number(event.target.value))} /><span className="time-slider-thumb" aria-hidden="true"><i /></span></div><div className="time-slider-labels" aria-hidden="true"><span>schnell</span><span>mittel</span><span>lang</span></div></fieldset>
+          <section className="recipe-detail-section recipe-editor-ingredients"><h3>Zutaten</h3><div className="ingredient-edit-list">{formIngredients.map(([name, amount], index) => <div className="ingredient-edit-row" key={index}>
             <input className="ingredient-name" aria-label="Zutat" placeholder="Zutat" value={name} onChange={event => setFormIngredients(previous => previous.map((row, i) => i === index ? [event.target.value, row[1]] : row))} />
             <input className="ingredient-quantity" aria-label="Menge" placeholder="Menge" value={amount} onChange={event => setFormIngredients(previous => previous.map((row, i) => i === index ? [row[0], event.target.value] : row))} />
             <button type="button" aria-label="Zutat entfernen" onClick={() => setFormIngredients(previous => previous.filter((_, i) => i !== index))}>×</button>
-          </div>)}</div>
-          <button type="button" className="add-ingredient" onClick={() => setFormIngredients(previous => [...previous, ['', '']])}>＋ Zutat hinzufügen</button>
+          </div>)}</div><button type="button" className="add-ingredient" onClick={() => setFormIngredients(previous => [...previous, ['', '']])}>＋ Zutat hinzufügen</button></section>
           <footer className="recipe-editor-actions"><button className="primary" type="submit" disabled={recipeSaving}>{recipeSaving ? 'Wird gespeichert …' : modalMode === 'new' ? 'Rezept speichern' : 'Änderungen speichern'}</button>
             {modalMode === 'edit' && activeRecipe && <button type="button" className="delete-recipe" onClick={() => deleteRecipe(activeRecipe)}>Rezept löschen</button>}</footer>
         </form>
