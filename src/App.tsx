@@ -277,6 +277,7 @@ export default function App() {
   const [imagePreview, setImagePreview] = useState('');
   const [recipeSaving, setRecipeSaving] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [showWelcome, setShowWelcome] = useState(true);
   const [displayName, setDisplayName] = useState('');
   const [onlineUsers, setOnlineUsers] = useState<{ id: string; name: string }[]>([]);
   const [email, setEmail] = useState('');
@@ -873,6 +874,16 @@ export default function App() {
     <p className="setup-note">Im Client darf nur der Publishable-Key stehen, niemals ein Service-Role-Key.</p>
   </section></main></div>;
 
+  if (supabase && !session && showWelcome) return <div className="shell auth-shell welcome-shell"><main className="main auth-main welcome-main"><section className="welcome-panel" aria-labelledby="welcome-title">
+    <div className="brand login-brand welcome-brand"><img className="login-app-icon" src={`${import.meta.env.BASE_URL}apple-touch-icon.png`} alt="" /><span>mealy</span></div>
+    <p className="welcome-kicker">GEMEINSAM PLANEN</p><h1 id="welcome-title">Was gibt’s heute?</h1><p className="welcome-copy">Ideen sammeln, Rezepte wählen und die Woche ganz entspannt planen.</p>
+    <div className="welcome-marquees" aria-hidden="true">
+      <div className="welcome-marquee"><div className="welcome-marquee-track">{['PASTA', 'GEMEINSAM KOCHEN', 'LIEBLINGSGERICHTE', 'WOCHENPLAN', 'PASTA', 'GEMEINSAM KOCHEN', 'LIEBLINGSGERICHTE', 'WOCHENPLAN'].map((item, index) => <span key={`first-${index}`}>{item}</span>)}</div></div>
+      <div className="welcome-marquee welcome-marquee-reverse"><div className="welcome-marquee-track">{['EINFACH PLANEN', 'GUT ESSEN', 'EINKAUFSLISTE', 'MEAL IDEAS', 'EINFACH PLANEN', 'GUT ESSEN', 'EINKAUFSLISTE', 'MEAL IDEAS'].map((item, index) => <span key={`second-${index}`}>{item}</span>)}</div></div>
+    </div>
+    <button type="button" className="welcome-start" onClick={() => setShowWelcome(false)}>Let’s go <span aria-hidden="true">→</span></button>
+  </section></main></div>;
+
   if (supabase && !session) return <div className="shell auth-shell"><main className="main auth-main"><section className="auth-panel login-panel">
     <div className="brand login-brand"><img className="login-app-icon" src={`${import.meta.env.BASE_URL}apple-touch-icon.png`} alt="" /><span>mealy</span></div><h1>Hello!</h1>
     <p>Hier Mail und Passwort eintragen - dann geht´s los!</p>
@@ -930,7 +941,7 @@ export default function App() {
       {loadFailed && <section className="panel"><p>{dataError || 'Der Zugriff auf die gemeinsame Datenbank ist fehlgeschlagen.'} Prüfe die Verbindung und die Mitgliedschaft in `app_members`.</p><button className="primary" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Erneut versuchen</button></section>}
 
       {view === 'plan' && <section className="view visible">
-        <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(isoWeek(monday)).padStart(2, '0')}</span><button aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}><img className="week-nav-arrow week-nav-arrow-next" src="/icons8-pfeil-48.png" alt="" /></button><button aria-label="Nächste Woche" onClick={() => changeWeek(1)}><img className="week-nav-arrow" src="/icons8-pfeil-48.png" alt="" /></button></div>
+        <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(isoWeek(monday)).padStart(2, '0')}</span><button className="week-nav-button week-nav-button-prev" aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}><span className="week-nav-chevron" aria-hidden="true" /></button><button className="week-nav-button week-nav-button-next" aria-label="Nächste Woche" onClick={() => changeWeek(1)}><span className="week-nav-chevron week-nav-chevron-next" aria-hidden="true" /></button></div>
         <div key={weekOffset} className={`weekday-grid week-swipe-in ${weekDirection === 1 ? 'from-next-week' : 'from-previous-week'}`} onPointerDown={startWeekSwipe} onPointerUp={finishWeekSwipe} onPointerCancel={() => { weekSwipeStartRef.current = null; }}>{dayNames.map((day, index) => {
           const date = weekDate(index); const key = localDateKey(date); const dayMeals = (plans[key] || []).map(id => recipes.find(recipe => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe)); const dayLocked = Boolean(lockedDays[key]);
           const swipeDx = daySwipe?.index === index ? daySwipe.dx : 0;
@@ -943,7 +954,7 @@ export default function App() {
               <button className="meal-open" onClick={event => { if (suppressDayMealClickRef.current) { event.preventDefault(); suppressDayMealClickRef.current = false; return; } openRecipe(recipe); }}>{randomMealAnimation?.date === key && randomMealAnimation.recipeId === recipe.id ? <HyperText key={randomMealAnimation.id} text={recipe.name} /> : recipe.name}</button>
               <button className="weekday-remove" style={{ '--meal-color': recipe.color } as CSSProperties} aria-label={`${recipe.name} entfernen`} onClick={() => removeMeal(key, mealIndex)}><WeekActionIcon action="remove" /></button>
             </div>) : <div className="weekday-empty">{dayLocked ? 'Kein Essen benötigt' : 'Noch nichts geplant'}</div>}</div>
-            <button className="weekday-add" aria-label={`${day}: Rezept auswählen`} onClick={() => { setTargetDay(index); setView('recipes'); setQuery(''); }}><span className="weekday-add-icon" aria-hidden="true" /></button></div>
+            {dayMeals.length === 0 && !dayLocked && <button className="weekday-add" aria-label={`${day}: Rezept auswählen`} onClick={() => { setTargetDay(index); setView('recipes'); setQuery(''); }}><span className="weekday-add-icon" aria-hidden="true" /></button>}</div>
           </article></div>;
         })}</div>
       </section>}
