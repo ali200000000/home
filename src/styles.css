@@ -255,32 +255,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .weekday-card.day-locked{background:#f0f0f2;color:#77777e}
 .weekday-card.day-locked .weekday-title span,.weekday-card.day-locked .weekday-empty{color:#8b8b92}
 .weekday-card.day-locked .weekday-row{border-color:#dedee2}
-.day-action-backdrop{z-index:66}
-.day-action-radial{pointer-events:auto}
-.day-action-option{pointer-events:auto;animation:day-action-pop .32s cubic-bezier(.2,1.35,.4,1) both}
-.day-action-option svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s cubic-bezier(.2,.8,.2,1)}
-.day-action-option:hover svg,.day-action-option:focus-visible svg{transform:rotate(10deg) scale(1.08)}
-.day-action-option::before{content:attr(data-day-label)}
-.day-lock-option{background:#eeeeF1;color:#676770;animation-delay:.06s}
-.day-lock-option:hover svg,.day-lock-option:focus-visible svg{transform:translateY(-1px) scale(1.08)}
-.day-lock-option.is-locked{background:#777780;color:#fff}
-.lock-shackle-open,.lock-shackle-closed{transform-origin:12px 10px}
-.lock-shackle-closed{opacity:0}
-.day-lock-option.is-locked .lock-shackle-open{opacity:0}
-.day-lock-option.is-locked .lock-shackle-closed{opacity:1}
-.day-lock-option.is-confirming{pointer-events:none}
-.day-lock-option.is-confirming:not(.is-locked) .lock-shackle-open{animation:lock-shackle-open .22s ease-in forwards}
-.day-lock-option.is-confirming:not(.is-locked) .lock-shackle-closed{animation:lock-shackle-close .24s .13s cubic-bezier(.2,1.3,.4,1) forwards}
-.day-lock-option.is-confirming.is-locked .lock-shackle-closed{animation:lock-shackle-unlock-close .18s ease-in forwards}
-.day-lock-option.is-confirming.is-locked .lock-shackle-open{animation:lock-shackle-unlock-open .24s .1s cubic-bezier(.2,1.3,.4,1) forwards}
-.day-action-option.is-confirming:not(.day-lock-option) svg{animation:dice-roll .38s cubic-bezier(.25,.8,.35,1) both}
 .hyper-text{display:inline-block;white-space:pre}
-@keyframes day-action-pop{from{opacity:0;transform:scale(.65)}to{opacity:1;transform:scale(1)}}
-@keyframes lock-shackle-open{to{opacity:0;transform:translate(1px,-2px) rotate(-12deg);transform-origin:12px 10px}}
-@keyframes lock-shackle-close{from{opacity:0;transform:translate(-1px,-2px) rotate(-9deg);transform-origin:12px 10px}to{opacity:1;transform:translate(0) rotate(0);transform-origin:12px 10px}}
-@keyframes lock-shackle-unlock-close{to{opacity:0;transform:translate(1px,-2px) rotate(-12deg)}}
-@keyframes lock-shackle-unlock-open{from{opacity:0;transform:translate(-1px,-2px) rotate(-9deg)}to{opacity:1;transform:translate(0) rotate(0)}}
-@keyframes dice-roll{0%{transform:rotate(0) scale(1)}45%{transform:rotate(160deg) scale(1.12)}100%{transform:rotate(360deg) scale(1)}}
 .weekday-title{display:flex;align-items:center;gap:9px;margin-bottom:8px;font-size:inherit}
 .weekday-title strong{font-size:17px;letter-spacing:-.03em}
 .weekday-title span{font-size:13px;color:var(--ios-secondary)}
@@ -431,18 +406,6 @@ input:not([type="checkbox"]):not([type="file"]),textarea,select{font-size:16px!i
 @keyframes recipe-detail-sheet-in{from{opacity:0;transform:translateY(28px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:390px){.recipe-detail-head{padding-inline:20px}.recipe-detail-actions{grid-template-columns:1fr}.recipe-detail-edit{order:2}}
 @media(prefers-reduced-motion:reduce){.recipe-detail-modal{animation:none}}
-.week-radial-backdrop{position:fixed;inset:0;z-index:65;background:transparent;pointer-events:none}
-.week-radial{position:fixed;display:flex;align-items:center;justify-content:center;gap:4px;width:max-content;height:auto;padding:6px;border:1px solid #ececf0;border-radius:999px;background:#fff;box-shadow:0 12px 34px #14211d24;transform:translate(-50%,-50%);pointer-events:none;animation:week-picker-in .34s cubic-bezier(.2,.8,.2,1) both}
-.week-radial-day{position:relative;display:grid;place-items:center;width:40px;height:40px;min-width:40px;padding:0;border:0;border-radius:50%;background:#f4f4f9;color:#74747b;font-size:13px;font-weight:700;letter-spacing:-.03em;pointer-events:auto;transition:transform .28s cubic-bezier(.34,1.56,.64,1),background-color .2s,color .2s,box-shadow .2s}
-.week-radial-day.has-recipe{background:var(--blue);color:#fff}
-.week-radial-day::before{content:attr(data-day-label);position:absolute;left:50%;top:-37px;z-index:2;padding:5px 9px;border:1px solid #ececf0;border-radius:999px;background:#f4f4f9;color:#55565b;font-size:12px;font-weight:600;line-height:1.2;white-space:nowrap;opacity:0;transform:translate(-50%,5px) scale(.88);filter:blur(2px);pointer-events:none;transition:opacity .18s,transform .24s cubic-bezier(.2,.8,.2,1),filter .18s}
-.week-radial-day:hover,.week-radial-day:focus-visible{transform:translateY(-2px) scale(1.08);background:#e9e9f1;color:#34343b;box-shadow:0 3px 9px #14211d16;outline:2px solid var(--blue);outline-offset:2px}
-.week-radial-day.has-recipe:hover,.week-radial-day.has-recipe:focus-visible{background:var(--blue);color:#fff}
-.week-radial-day:hover::before,.week-radial-day:focus-visible::before{opacity:1;transform:translate(-50%,0) scale(1);filter:blur(0)}
-.week-radial-day:active,.week-radial-day.is-selected{transform:scale(.92);background:var(--blue);color:#fff;box-shadow:0 1px 4px #14211d20;transition-duration:.12s}
-@keyframes week-picker-in{from{opacity:0;transform:translate(-50%,-50%) scale(.5);filter:blur(2px)}to{opacity:1;transform:translate(-50%,-50%) scale(1);filter:blur(0)}}
-@media(max-width:370px){.week-radial{gap:2px;padding:5px}.week-radial-day{width:36px;height:36px;min-width:36px;font-size:12px}}
-@media(prefers-reduced-motion:reduce){.week-radial,.week-radial-day,.week-radial-day::before,.day-action-option,.day-action-option svg{animation:none;transition:none;filter:none}.week-radial{opacity:1;transform:translate(-50%,-50%)}.week-radial-day::before{transform:translate(-50%,0);opacity:0}}
 @media(min-width:851px){
  .sidebar .nav{gap:16px;padding:5px 0 0 42px}
  .sidebar .nav button{position:relative;display:block;width:100%;min-width:0;padding:10px 0;background:transparent!important;border-radius:0!important;color:var(--ink);font-size:clamp(25px,2.1vw,31px);font-weight:700;line-height:1.06;letter-spacing:-.055em;text-align:left;white-space:nowrap;opacity:.48;transition:opacity .24s ease,color .24s ease}
@@ -516,11 +479,6 @@ input:not([type="checkbox"]):not([type="file"]),textarea,select{font-size:16px!i
 .shopping-item-remove{display:grid;place-items:center;flex:none;width:32px;height:32px;margin:-4px -6px -4px 0;padding:0;border:0;border-radius:10px;background:transparent;color:#9a9ea8;cursor:pointer}.shopping-item-remove:hover,.shopping-item-remove:focus-visible{background:#f1f2f6;color:var(--ink)}.shopping-item-remove svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
 .shopping-clear-done{display:block;margin:14px 0 0 auto;padding:6px 4px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;cursor:pointer}.shopping-clear-done:hover{color:var(--ink)}
 .recipe-card,.recipe-card img,.recipe-week-picker img{-webkit-user-select:none;user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
-.recipe-week-picker .day-action-option{animation:picker-day-out .5s calc(40ms + var(--order) * 24ms) cubic-bezier(.34,1.56,.64,1) backwards}
-.recipe-week-picker .day-lock-option.is-locked:not(.is-selected){background:#777780;color:#fff}
-.recipe-week-picker .day-lock-option:not(.is-locked):not(.is-selected){background:#fff;color:var(--ink)}
-.recipe-week-picker .day-action-option svg{width:24px;height:24px}
-.recipe-week-picker-center.day-menu-center{background:var(--ink);color:#fff;font-size:20px;font-weight:800;letter-spacing:-.03em}
 .weekday-swipe{position:relative;overflow:hidden;border-radius:17px}
 .weekday-swipe .weekday-card{position:relative;z-index:1;touch-action:pan-y}
 .weekday-swipe .weekday-card.is-swiping{transition:none}

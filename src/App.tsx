@@ -16,7 +16,6 @@ type Recipe = {
 };
 type Item = { name: string; done: boolean; qty?: string; cat?: string; auto?: boolean; key?: string };
 type ModalMode = 'view' | 'edit' | 'new' | null;
-type DayAction = 'random' | 'lock';
 
 const defaults: Recipe[] = [
   { id: 1, name: 'Zitronen-Ricotta-Pasta', emoji: '', color: '#b5c5e8', time: '25 min', tag: 'Vegetarisch', ingredients: [['Pasta', '300 g'], ['Ricotta', '150 g'], ['Zitrone', '1 Stück'], ['Babyspinat', '100 g'], ['Parmesan', '50 g']] },
@@ -248,15 +247,9 @@ export default function App() {
   const [dropConfirm, setDropConfirm] = useState<number | null>(null);
   const holdTimerRef = useRef<number | null>(null);
   const holdPointerRef = useRef<{ id: number; x: number; y: number; recipe: Recipe; element: HTMLElement } | null>(null);
-  const [dayMenuIndex, setDayMenuIndex] = useState<number | null>(null);
-  const [dayMenuAnchor, setDayMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const [daySwipe, setDaySwipe] = useState<{ index: number; dx: number } | null>(null);
   const daySwipeActiveRef = useRef(false);
-  const dayHoldTimerRef = useRef<number | null>(null);
-  const dayHoldPointerRef = useRef<{ id: number; x: number; y: number; index: number; element: HTMLElement } | null>(null);
-  const [dayActionHover, setDayActionHover] = useState<DayAction | null>(null);
-  const [dayActionConfirm, setDayActionConfirm] = useState<DayAction | null>(null);
-  const dayActionActiveRef = useRef(false);
+  const daySwipePointerRef = useRef<{ id: number; x: number; y: number; index: number; element: HTMLElement } | null>(null);
   const suppressDayMealClickRef = useRef(false);
   const holdActiveRef = useRef(false);
   const suppressRecipeClickRef = useRef(false);
@@ -616,43 +609,20 @@ export default function App() {
     }
     setSheetDragOffset(0);
   };
-  const startDayHold = (event: ReactPointerEvent<HTMLElement>, index: number) => {
+  const startDaySwipe = (event: ReactPointerEvent<HTMLElement>, index: number) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     const target = event.target as HTMLElement;
     if (target.closest('.weekday-remove')) return;
     if (target.closest('.weekday-add')) return;
-    if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
-    dayHoldPointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, index, element: event.currentTarget };
-    dayHoldTimerRef.current = window.setTimeout(() => {
-      const pointer = dayHoldPointerRef.current;
-      if (!pointer || pointer.id !== event.pointerId) return;
-      try { pointer.element.setPointerCapture(pointer.id); } catch { /* Pointer capture can be unavailable in older Safari versions. */ }
-      setDayMenuIndex(index);
-      setDayMenuAnchor({ x: event.clientX, y: event.clientY });
-      // Das Ziehen zur Aktion darf nicht als Wischen zur nächsten Woche zählen.
-      weekSwipeStartRef.current = null;
-      dayActionActiveRef.current = true;
-      suppressDayMealClickRef.current = true;
-      window.setTimeout(() => { suppressDayMealClickRef.current = false; }, 700);
-      if (navigator.vibrate) navigator.vibrate(18);
-    }, 480);
+    daySwipePointerRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, index, element: event.currentTarget };
   };
-  const moveDayHold = (event: ReactPointerEvent<HTMLElement>) => {
-    const pointer = dayHoldPointerRef.current;
+  const moveDaySwipe = (event: ReactPointerEvent<HTMLElement>) => {
+    const pointer = daySwipePointerRef.current;
     if (!pointer || pointer.id !== event.pointerId) return;
-    if (dayActionActiveRef.current) {
-      event.preventDefault();
-      const action = dayMenuActionAt(event.clientX, event.clientY);
-      if (action !== dayActionHover && action !== null) navigator.vibrate?.(8);
-      setDayActionHover(action);
-      return;
-    }
     const dx = event.clientX - pointer.x;
     const dy = event.clientY - pointer.y;
     if (!daySwipeActiveRef.current && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
-      // Seitliches Ziehen wie in Apple Mail: kein Langdruck-Menü, die Kachel folgt dem Finger.
-      if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
-      dayHoldTimerRef.current = null;
+      // Seitliches Ziehen wie in Apple Mail: die Kachel folgt dem Finger.
       daySwipeActiveRef.current = true;
       try { pointer.element.setPointerCapture(pointer.id); } catch { /* Pointer capture can be unavailable in older Safari versions. */ }
     }
@@ -667,52 +637,28 @@ export default function App() {
       setDaySwipe({ index: pointer.index, dx: limited });
       return;
     }
-    if (Math.hypot(dx, dy) > 12 && dayMenuIndex === null) {
-      if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
-      dayHoldTimerRef.current = null; dayHoldPointerRef.current = null;
-    }
+    // Senkrecht bewegt: Die Seite scrollt, kein Wischen.
+    if (Math.hypot(dx, dy) > 12) daySwipePointerRef.current = null;
   };
-  const endDayHold = (event: ReactPointerEvent<HTMLElement>) => {
-    if (dayHoldPointerRef.current?.id !== event.pointerId) return;
-    if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
-    const index = dayHoldPointerRef.current.index;
-    dayHoldPointerRef.current = null;
-    dayHoldTimerRef.current = null;
-    if (daySwipeActiveRef.current) {
-      daySwipeActiveRef.current = false;
-      const dx = daySwipe?.index === index ? daySwipe.dx : 0;
-      setDaySwipe(null);
-      suppressDayMealClickRef.current = true;
-      window.setTimeout(() => { suppressDayMealClickRef.current = false; }, 300);
-      if (dx <= -DAY_SWIPE_TRIGGER) randomizeDay(index);
-      else if (dx >= DAY_SWIPE_TRIGGER) toggleDayLock(index);
-      return;
-    }
-    const active = dayActionActiveRef.current;
-    // pointercancel liefert keine verlässlichen Koordinaten: dann gilt die zuletzt angesteuerte Aktion.
-    const action = active ? dayMenuActionAt(event.clientX, event.clientY) ?? dayActionHover : null;
-    if (action) runDayAction(action, index);
-    else if (active) closeDayMenu();
+  const endDaySwipe = (event: ReactPointerEvent<HTMLElement>) => {
+    if (daySwipePointerRef.current?.id !== event.pointerId) return;
+    const index = daySwipePointerRef.current.index;
+    daySwipePointerRef.current = null;
+    if (!daySwipeActiveRef.current) return;
+    daySwipeActiveRef.current = false;
+    const dx = daySwipe?.index === index ? daySwipe.dx : 0;
+    setDaySwipe(null);
+    suppressDayMealClickRef.current = true;
+    window.setTimeout(() => { suppressDayMealClickRef.current = false; }, 300);
+    if (dx <= -DAY_SWIPE_TRIGGER) randomizeDay(index);
+    else if (dx >= DAY_SWIPE_TRIGGER) toggleDayLock(index);
   };
-  const runDayAction = (action: DayAction, index: number) => {
-    if (dayActionConfirm !== null) return;
-    setDayActionHover(action);
-    setDayActionConfirm(action);
-    dayActionActiveRef.current = false;
-    navigator.vibrate?.(15);
-    window.setTimeout(() => {
-      if (action === 'random') randomizeDay(index);
-      else toggleDayLock(index);
-    }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 420);
-  };
-  const closeDayMenu = () => { setDayMenuIndex(null); setDayMenuAnchor(null); setDayActionHover(null); setDayActionConfirm(null); dayActionActiveRef.current = false; };
   const randomizeDay = (index: number) => {
     const recipe = recipes[Math.floor(Math.random() * recipes.length)];
     if (recipe) {
       addMeal(recipe, index);
       setRandomMealAnimation({ date: localDateKey(weekDate(index)), recipeId: recipe.id, id: Date.now() });
     }
-    closeDayMenu();
   };
   const toggleDayLock = (index: number) => {
     if (weekOffset !== 0) return;
@@ -723,7 +669,6 @@ export default function App() {
       delete next[key];
       return next;
     });
-    closeDayMenu();
   };
   const clearHoldTimer = () => { if (holdTimerRef.current !== null) window.clearTimeout(holdTimerRef.current); holdTimerRef.current = null; };
   const startRecipeHold = (event: ReactPointerEvent<HTMLElement>, recipe: Recipe) => {
@@ -793,7 +738,7 @@ export default function App() {
     navigator.vibrate?.(15);
     window.setTimeout(() => { setDropConfirm(null); addMeal(recipe, day); }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 320);
   };
-  const dragPointerActive = Boolean(dragRecipe && dragPoint) || dayMenuIndex !== null;
+  const dragPointerActive = Boolean(dragRecipe && dragPoint);
   useEffect(() => {
     if (!dragPointerActive) return;
     const stopPageScroll = (event: TouchEvent) => event.preventDefault();
@@ -910,15 +855,6 @@ export default function App() {
       item.style.zIndex = '';
     });
   };
-  const dayMenuDateKey = dayMenuIndex === null ? null : localDateKey(weekDate(dayMenuIndex));
-  const dayMenuLocked = dayMenuDateKey ? Boolean(lockedDays[dayMenuDateKey]) : false;
-  const dayMenuActions: DayAction[] = [...(dayMenuLocked ? [] : ['random' as const]), ...(weekOffset === 0 ? ['lock' as const] : [])];
-  const dayMenuLayout = dayMenuAnchor && dayMenuActions.length ? arcLayout(dayMenuAnchor, dayMenuActions.length) : null;
-  const dayMenuActionAt = (x: number, y: number) => {
-    const index = dayMenuLayout ? nearestArcItem(dayMenuLayout, x, y) : null;
-    return index === null ? null : dayMenuActions[index];
-  };
-  const dayActionLabel = (action: DayAction) => action === 'random' ? 'Zufälliges Gericht' : dayMenuLocked ? 'Tag freigeben' : 'Tag sperren';
 
   if (import.meta.env.PROD && !supabase) return <div className="shell"><main className="main"><section className="panel auth-panel">
     <div className="brand"><BrandLogo /></div><h1>Supabase noch nicht verbunden</h1>
@@ -990,7 +926,7 @@ export default function App() {
           return <div className="weekday-swipe" key={day}>
             {swipeDx > 0 && <div className={`weekday-swipe-action swipe-lock${swipeDx >= DAY_SWIPE_TRIGGER ? ' is-armed' : ''}`} aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d={dayLocked ? 'M8 10V7a4 4 0 0 1 7.4-2.2' : 'M8 10V7a4 4 0 0 1 8 0v3'} /></svg></div>}
             {swipeDx < 0 && <div className={`weekday-swipe-action swipe-random${swipeDx <= -DAY_SWIPE_TRIGGER ? ' is-armed' : ''}`} aria-hidden="true"><DiceIcon /></div>}
-            <article className={`weekday-card${dayLocked ? ' day-locked' : ''}${daySwipe?.index === index ? ' is-swiping' : ''}`} style={swipeDx ? { transform: `translateX(${swipeDx}px)` } : undefined} data-drop-day={index} onPointerDown={event => startDayHold(event, index)} onPointerMove={moveDayHold} onPointerUp={endDayHold} onPointerCancel={endDayHold} onContextMenu={event => event.preventDefault()}>
+            <article className={`weekday-card${dayLocked ? ' day-locked' : ''}${daySwipe?.index === index ? ' is-swiping' : ''}`} style={swipeDx ? { transform: `translateX(${swipeDx}px)` } : undefined} data-drop-day={index} onPointerDown={event => startDaySwipe(event, index)} onPointerMove={moveDaySwipe} onPointerUp={endDaySwipe} onPointerCancel={endDaySwipe} onContextMenu={event => event.preventDefault()}>
             <div className="weekday-title"><strong>{day}</strong><span>{dateText(date)}</span>{weekOffset === 0 && index === 0 && <span className="today-mark">DIESE WOCHE</span>}</div>
             <div className="weekday-row"><div className="weekday-content">{dayMeals.length ? dayMeals.map((recipe, mealIndex) => <div className="weekday-meal" style={{ background: recipe.color }} key={`${recipe.id}-${mealIndex}`}>
               <button className="meal-open" onClick={event => { if (suppressDayMealClickRef.current) { event.preventDefault(); suppressDayMealClickRef.current = false; return; } openRecipe(recipe); }}>{randomMealAnimation?.date === key && randomMealAnimation.recipeId === recipe.id ? <HyperText key={randomMealAnimation.id} text={recipe.name} /> : recipe.name}</button>
@@ -1035,21 +971,6 @@ export default function App() {
           const offset = dragPicker.items[index];
           const dayHasRecipe = (plans[localDateKey(weekDate(index))] || []).some(id => recipes.some(recipe => recipe.id === id));
           return <button type="button" key={day} style={{ '--x': `${offset.x}px`, '--y': `${offset.y}px`, '--order': index } as CSSProperties} className={`recipe-week-picker-day${dayHasRecipe ? ' has-recipe' : ''}${dragDay === index ? ' is-selected' : ''}${dropConfirm === index ? ' is-chosen' : ''}`} aria-label={`${day}${dayHasRecipe ? ', schon ein Gericht geplant' : ''}`} onClick={() => confirmDrop(dragRecipe, index)}>{day.slice(0, 2)}</button>;
-        })}
-      </section>
-    </div>}
-
-    {dayMenuIndex !== null && dayMenuLayout && <div className={`recipe-week-picker-backdrop${dayActionConfirm ? ' is-confirming' : ''}`} onClick={closeDayMenu}>
-      <p className="recipe-week-picker-caption" aria-live="polite"><b>{dayNames[dayMenuIndex]}</b><span>{dayActionHover ? dayActionLabel(dayActionHover) : 'Auf eine Aktion ziehen'}</span></p>
-      <section className="recipe-week-picker" style={{ left: dayMenuLayout.center.x, top: dayMenuLayout.center.y } as CSSProperties} role="dialog" aria-modal="true" aria-label={`Aktionen für ${dayNames[dayMenuIndex]}`} onClick={event => event.stopPropagation()}>
-        <div className={`recipe-week-picker-center day-menu-center${dayActionHover ? ' is-aiming' : ''}`}>{dayNames[dayMenuIndex].slice(0, 2)}</div>
-        {dayMenuActions.map((action, index) => {
-          const offset = dayMenuLayout.items[index];
-          const state = `${dayActionHover === action ? ' is-selected' : ''}${dayActionConfirm === action ? ' is-chosen is-confirming' : ''}`;
-          const style = { '--x': `${offset.x}px`, '--y': `${offset.y}px`, '--order': index } as CSSProperties;
-          return action === 'random'
-            ? <button type="button" key={action} style={style} className={`recipe-week-picker-day day-action-option${state}`} aria-label={`Zufälliges Gericht für ${dayNames[dayMenuIndex]}`} onClick={() => runDayAction(action, dayMenuIndex)}><DiceIcon /></button>
-            : <button type="button" key={action} style={style} className={`recipe-week-picker-day day-action-option day-lock-option${state}${dayMenuLocked ? ' is-locked' : ''}`} aria-label={`${dayActionLabel(action)}: ${dayNames[dayMenuIndex]}`} onClick={() => runDayAction(action, dayMenuIndex)}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path className="lock-shackle-open" d="M8 10V7a4 4 0 0 1 7.4-2.2"/><path className="lock-shackle-closed" d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></button>;
         })}
       </section>
     </div>}
