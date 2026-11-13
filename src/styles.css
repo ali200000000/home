@@ -155,6 +155,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .day-choice{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:44px;padding:8px 12px;border-radius:11px;background:#f6f6f8;text-align:left;font-weight:600}
 .day-choice span{font-size:13px;color:var(--ios-secondary);font-weight:400}
 .day-choice:active{background:#e8edc2}
+.day-choice:disabled{background:#efeff1;color:#85858c;cursor:default}
+.weekbar button{transition:transform .14s cubic-bezier(.2,.8,.2,1),background-color .14s,box-shadow .14s}
+.weekbar button:active{transform:scale(.86);background:#f0f0f3;box-shadow:inset 0 1px 3px #14211d1c}
 @media(max-width:850px){.day-picker-backdrop{padding-bottom:calc(62px + env(safe-area-inset-bottom))}.day-picker{padding-bottom:calc(18px + env(safe-area-inset-bottom))}}
 .toast{position:fixed;z-index:8;left:50%;bottom:calc(82px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;pointer-events:none;background:#202124;color:#fff;padding:11px 16px;border-radius:24px;font-size:13px;font-weight:600;box-shadow:0 5px 18px #0002;transition:opacity .18s,transform .18s;white-space:nowrap}
 .toast.visible{opacity:1;transform:translate(-50%,0)}
@@ -238,11 +241,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* Final prototype layout: stack the seven day cards vertically at every width. */
 .weekday-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;overflow:visible;padding:0}
 .weekday-card{min-height:0;background:#fff;border-radius:17px;padding:15px 16px;display:block;box-shadow:0 1px 3px #0000000c}
+.weekday-card.day-locked{background:#f0f0f2;color:#77777e}
+.weekday-card.day-locked .weekday-title span,.weekday-card.day-locked .weekday-empty{color:#8b8b92}
+.weekday-card.day-locked .weekday-row{border-color:#dedee2}
 .day-action-backdrop{z-index:66}
 .day-action-radial{pointer-events:auto}
-.day-action-option{pointer-events:auto}
-.day-action-option svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.day-action-option{pointer-events:auto;animation:day-action-pop .32s cubic-bezier(.2,1.35,.4,1) both}
+.day-action-option svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s cubic-bezier(.2,.8,.2,1)}
+.day-action-option:hover svg,.day-action-option:focus-visible svg{transform:rotate(10deg) scale(1.08)}
 .day-action-option::before{content:attr(data-day-label)}
+.day-lock-option{background:#eeeeF1;color:#676770;animation-delay:.06s}
+.day-lock-option:hover svg,.day-lock-option:focus-visible svg{transform:translateY(-1px) scale(1.08)}
+.day-lock-option.is-locked{background:#777780;color:#fff}
+.lock-shackle-open,.lock-shackle-closed{transform-origin:12px 10px}
+.lock-shackle-closed{opacity:0}
+.day-lock-option.is-locked .lock-shackle-open{opacity:0}
+.day-lock-option.is-locked .lock-shackle-closed{opacity:1}
+.day-lock-option.is-confirming{pointer-events:none}
+.day-lock-option.is-confirming:not(.is-locked) .lock-shackle-open{animation:lock-shackle-open .22s ease-in forwards}
+.day-lock-option.is-confirming:not(.is-locked) .lock-shackle-closed{animation:lock-shackle-close .24s .13s cubic-bezier(.2,1.3,.4,1) forwards}
+.day-lock-option.is-confirming.is-locked .lock-shackle-closed{animation:lock-shackle-unlock-close .18s ease-in forwards}
+.day-lock-option.is-confirming.is-locked .lock-shackle-open{animation:lock-shackle-unlock-open .24s .1s cubic-bezier(.2,1.3,.4,1) forwards}
+.day-action-option.is-confirming:not(.day-lock-option) svg{animation:dice-roll .38s cubic-bezier(.25,.8,.35,1) both}
+@keyframes day-action-pop{from{opacity:0;transform:scale(.65)}to{opacity:1;transform:scale(1)}}
+@keyframes lock-shackle-open{to{opacity:0;transform:translate(1px,-2px) rotate(-12deg);transform-origin:12px 10px}}
+@keyframes lock-shackle-close{from{opacity:0;transform:translate(-1px,-2px) rotate(-9deg);transform-origin:12px 10px}to{opacity:1;transform:translate(0) rotate(0);transform-origin:12px 10px}}
+@keyframes lock-shackle-unlock-close{to{opacity:0;transform:translate(1px,-2px) rotate(-12deg)}}
+@keyframes lock-shackle-unlock-open{from{opacity:0;transform:translate(-1px,-2px) rotate(-9deg)}to{opacity:1;transform:translate(0) rotate(0)}}
+@keyframes dice-roll{0%{transform:rotate(0) scale(1)}45%{transform:rotate(160deg) scale(1.12)}100%{transform:rotate(360deg) scale(1)}}
 .weekday-title{display:flex;align-items:center;gap:9px;margin-bottom:8px;font-size:inherit}
 .weekday-title strong{font-size:17px;letter-spacing:-.03em}
 .weekday-title span{font-size:13px;color:var(--ios-secondary)}
@@ -318,7 +344,7 @@ input:not([type="checkbox"]):not([type="file"]),textarea,select{font-size:16px!i
 .week-radial-day:active,.week-radial-day.is-selected{transform:scale(.92);background:var(--blue);color:#fff;box-shadow:0 1px 4px #14211d20;transition-duration:.12s}
 @keyframes week-picker-in{from{opacity:0;transform:translate(-50%,-50%) scale(.5);filter:blur(2px)}to{opacity:1;transform:translate(-50%,-50%) scale(1);filter:blur(0)}}
 @media(max-width:370px){.week-radial{gap:2px;padding:5px}.week-radial-day{width:36px;height:36px;min-width:36px;font-size:12px}}
-@media(prefers-reduced-motion:reduce){.week-radial,.week-radial-day,.week-radial-day::before{animation:none;transition:none;filter:none}.week-radial{opacity:1;transform:translate(-50%,-50%)}.week-radial-day::before{transform:translate(-50%,0);opacity:0}}
+@media(prefers-reduced-motion:reduce){.week-radial,.week-radial-day,.week-radial-day::before,.day-action-option,.day-action-option svg{animation:none;transition:none;filter:none}.week-radial{opacity:1;transform:translate(-50%,-50%)}.week-radial-day::before{transform:translate(-50%,0);opacity:0}}
 @media(min-width:851px){
  .sidebar .nav{gap:16px;padding:5px 0 0 42px}
  .sidebar .nav button{position:relative;display:block;width:100%;min-width:0;padding:10px 0;background:transparent!important;border-radius:0!important;color:var(--ink);font-size:clamp(25px,2.1vw,31px);font-weight:700;line-height:1.06;letter-spacing:-.055em;text-align:left;white-space:nowrap;opacity:.48;transition:opacity .24s ease,color .24s ease}
@@ -363,7 +389,7 @@ input:not([type="checkbox"]):not([type="file"]),textarea,select{font-size:16px!i
 @keyframes week-enter-from-right{from{opacity:.78;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
 @keyframes week-enter-from-left{from{opacity:.78;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
 @media(hover:hover) and (prefers-reduced-motion:no-preference){.weekday-card{transition:transform .24s cubic-bezier(.22,.75,.25,1),box-shadow .24s ease}.weekday-card:hover{transform:translateX(2px);box-shadow:0 4px 13px #10201b12}}
-@media(prefers-reduced-motion:reduce){.week-swipe-in{animation:none!important}.weekday-card{transition:none!important}}
+@media(prefers-reduced-motion:reduce){.week-swipe-in{animation:none!important}.weekday-card,.weekbar button{transition:none!important}}
 .schedule-toast{position:fixed;z-index:80;right:22px;bottom:22px;display:flex;align-items:center;gap:11px;width:min(360px,calc(100vw - 32px));min-height:62px;padding:12px 16px;border:1px solid #5f9e4c35;border-radius:17px;background:var(--surface);color:var(--ink);font-size:14px;font-weight:600;line-height:1.35;box-shadow:0 12px 36px #14211d24;animation:schedule-toast-enter .32s cubic-bezier(.2,.85,.25,1.25) both}.schedule-toast-check{display:grid;place-items:center;width:34px;height:34px;flex:none;border-radius:50%;background:#5f9e4c;color:#fff}.schedule-toast-check svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}.schedule-toast-check path{stroke-dasharray:24;stroke-dashoffset:24;animation:schedule-check-draw .38s .12s ease-out forwards}@keyframes schedule-toast-enter{from{opacity:0;transform:translate3d(0,12px,0) scale(.96)}to{opacity:1;transform:translate3d(0,0,0) scale(1)}}@keyframes schedule-check-draw{to{stroke-dashoffset:0}}@media(max-width:850px){.schedule-toast{right:14px;bottom:calc(88px + env(safe-area-inset-bottom))}}@media(prefers-reduced-motion:reduce){.schedule-toast{animation:none}.schedule-toast-check path{animation:none;stroke-dashoffset:0}}
 .drag-recipe-ghost{animation:drag-ghost-pop .24s cubic-bezier(.2,.8,.2,1)}
 @keyframes drag-ghost-pop{0%{opacity:.6;transform:translate(-50%,-125%) scale(.84)}65%{opacity:1;transform:translate(-50%,-125%) scale(1.06)}100%{transform:translate(-50%,-125%) scale(1)}}
