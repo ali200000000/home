@@ -207,6 +207,7 @@ export default function App() {
   const [dragPoint, setDragPoint] = useState<{ x: number; y: number } | null>(null);
   const [dragAnchor, setDragAnchor] = useState<{ x: number; y: number } | null>(null);
   const [dragDay, setDragDay] = useState<number | null>(null);
+  const [dropConfirm, setDropConfirm] = useState<number | null>(null);
   const holdTimerRef = useRef<number | null>(null);
   const holdPointerRef = useRef<{ id: number; x: number; y: number; recipe: Recipe; element: HTMLElement } | null>(null);
   const [dayMenuIndex, setDayMenuIndex] = useState<number | null>(null);
@@ -509,10 +510,41 @@ export default function App() {
   const currentWeekItems = items;
   const userInitial = (displayName.trim().charAt(0) || session?.user.email?.trim().charAt(0) || '?').toLocaleUpperCase('de-DE');
   const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : view === 'inspiration' ? 'Inspiration' : 'Einkaufsliste';
-  const weekRadialCenter = dragAnchor ? {
-    left: Math.max(148, Math.min(dragAnchor.x, window.innerWidth - 148)),
-    top: Math.max(148, Math.min(dragAnchor.y, window.innerHeight - 148)),
-  } : null;
+  // Pinterest-artig: Tage im Bogen um den Finger, der Bogen zeigt zur Displaymitte.
+  const dragPicker = useMemo(() => {
+    if (!dragAnchor) return null;
+    const margin = 44;
+    const center = { x: Math.max(margin, Math.min(dragAnchor.x, window.innerWidth - margin)), y: Math.max(margin, Math.min(dragAnchor.y, window.innerHeight - margin)) };
+    const towardX = window.innerWidth / 2 - center.x;
+    const towardY = window.innerHeight / 2 - center.y;
+    const facing = Math.hypot(towardX, towardY) < 40 ? -Math.PI / 2 : Math.atan2(towardY, towardX);
+    const step = 26 * Math.PI / 180;
+    const radius = 112;
+    const days = dayNames.map((_, index) => {
+      const angle = facing + (index - 3) * step;
+      return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+    });
+    // Montag soll links (bzw. oben) liegen, egal in welche Richtung der Bogen zeigt.
+    const first = days[0]; const last = days[days.length - 1];
+    const horizontal = Math.abs(last.x - first.x) >= Math.abs(last.y - first.y);
+    if (horizontal ? first.x > last.x : first.y > last.y) days.reverse();
+    // In den Ecken reicht der Bogen sonst über den Rand: dann das ganze Menü nach innen schieben.
+    const pad = 34;
+    const xs = days.map(day => center.x + day.x); const ys = days.map(day => center.y + day.y);
+    center.x += Math.max(0, pad - Math.min(...xs)) - Math.max(0, Math.max(...xs) - (window.innerWidth - pad));
+    center.y += Math.max(0, pad - Math.min(...ys)) - Math.max(0, Math.max(...ys) - (window.innerHeight - pad));
+    return { center, days };
+  }, [dragAnchor]);
+  const pickerDayAt = (x: number, y: number) => {
+    if (!dragPicker) return null;
+    let nearest: number | null = null;
+    let nearestDistance = 46;
+    dragPicker.days.forEach((offset, index) => {
+      const distance = Math.hypot(x - dragPicker.center.x - offset.x, y - dragPicker.center.y - offset.y);
+      if (distance < nearestDistance) { nearest = index; nearestDistance = distance; }
+    });
+    return nearest;
+  };
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -677,8 +709,9 @@ export default function App() {
     if (!holdActiveRef.current) return;
     event.preventDefault();
     setDragPoint({ x: event.clientX, y: event.clientY });
-    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-drop-day]');
-    setDragDay(target ? Number(target.dataset.dropDay) : null);
+    const day = pickerDayAt(event.clientX, event.clientY);
+    if (day !== dragDay && day !== null) navigator.vibrate?.(8);
+    setDragDay(day);
   };
   const endRecipeHold = (event: ReactPointerEvent<HTMLElement>) => {
     const pointer = holdPointerRef.current;
@@ -687,10 +720,9 @@ export default function App() {
     if (holdActiveRef.current) {
       suppressRecipeClickRef.current = true;
       window.setTimeout(() => { suppressRecipeClickRef.current = false; }, 700);
-      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-drop-day]');
-      const day = target ? Number(target.dataset.dropDay) : null;
+      const day = pickerDayAt(event.clientX, event.clientY);
       setDragPoint(null); setDragDay(day);
-      if (day !== null && day >= 0 && day < dayNames.length) addMeal(pointer.recipe, day);
+      if (day !== null) confirmDrop(pointer.recipe, day);
       else { setDragRecipe(null); setDragAnchor(null); setDragDay(null); }
     }
     holdActiveRef.current = false;
@@ -700,19 +732,25 @@ export default function App() {
     const pointer = holdPointerRef.current;
     if (pointer?.id !== event.pointerId) return;
     clearHoldTimer();
-    const target = holdActiveRef.current ? document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-drop-day]') : null;
-    const day = target ? Number(target.dataset.dropDay) : null;
+    const day = holdActiveRef.current ? pickerDayAt(event.clientX, event.clientY) : null;
     holdPointerRef.current = null;
     holdActiveRef.current = false;
-    if (day !== null && Number.isInteger(day) && day >= 0 && day < dayNames.length) {
+    if (day !== null) {
       suppressRecipeClickRef.current = true;
       window.setTimeout(() => { suppressRecipeClickRef.current = false; }, 700);
-      addMeal(pointer.recipe, day);
+      confirmDrop(pointer.recipe, day);
       return;
     }
     setDragPoint(null); setDragAnchor(null); setDragRecipe(null); setDragDay(null);
   };
   const closeDragSheet = () => { clearHoldTimer(); holdPointerRef.current = null; holdActiveRef.current = false; setDragRecipe(null); setDragPoint(null); setDragAnchor(null); setDragDay(null); };
+  // Kurz die Auswahl zeigen (Tag springt, Rest fliegt ein), dann einplanen.
+  const confirmDrop = (recipe: Recipe, day: number) => {
+    if (dropConfirm !== null) return;
+    setDropConfirm(day); setDragDay(day);
+    navigator.vibrate?.(15);
+    window.setTimeout(() => { setDropConfirm(null); addMeal(recipe, day); }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 320);
+  };
   const dragPointerActive = Boolean(dragRecipe && dragPoint);
   useEffect(() => {
     if (!dragPointerActive) return;
@@ -936,13 +974,14 @@ export default function App() {
 
     {scheduleNotice && <div className="schedule-toast" role="status" aria-live="polite"><span className="schedule-toast-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.5" /></svg></span><span>{scheduleNotice}</span></div>}
 
-    {dragRecipe && weekRadialCenter && <div className="week-radial-backdrop recipe-week-picker-backdrop" onClick={closeDragSheet}>
-      <section className="week-radial recipe-week-picker" style={weekRadialCenter} role="dialog" aria-modal="true" aria-label={`Wochentag für ${dragRecipe.name} auswählen`} onClick={event => event.stopPropagation()}>
-        <div className="recipe-week-picker-center" style={{ background: dragRecipe.color }}>{dragRecipe.imageUrl ? <img src={dragRecipe.imageUrl} alt="" /> : <NavIcon view="recipes" />}<span>{dragRecipe.name}</span></div>
+    {dragRecipe && dragPicker && <div className={`recipe-week-picker-backdrop${dropConfirm !== null ? ' is-confirming' : ''}`} onClick={closeDragSheet}>
+      <p className="recipe-week-picker-caption" aria-live="polite"><b>{dragRecipe.name}</b><span>{dragDay !== null ? dayNames[dragDay] : 'Auf einen Tag ziehen'}</span></p>
+      <section className="recipe-week-picker" style={{ left: dragPicker.center.x, top: dragPicker.center.y, '--chosen-x': `${dropConfirm !== null ? dragPicker.days[dropConfirm].x : 0}px`, '--chosen-y': `${dropConfirm !== null ? dragPicker.days[dropConfirm].y : 0}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label={`Wochentag für ${dragRecipe.name} auswählen`} onClick={event => event.stopPropagation()}>
+        <div className={`recipe-week-picker-center${dragDay !== null ? ' is-aiming' : ''}`} style={{ background: dragRecipe.color }}>{dragRecipe.imageUrl ? <img src={dragRecipe.imageUrl} alt="" /> : <NavIcon view="recipes" />}</div>
         {dayNames.map((day, index) => {
-          const abbreviations = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+          const offset = dragPicker.days[index];
           const dayHasRecipe = (plans[localDateKey(weekDate(index))] || []).some(id => recipes.some(recipe => recipe.id === id));
-          return <button type="button" style={{ '--day-order': index, '--day-angle': `${index * (360 / 7) - 90}deg`, '--day-counter-angle': `${90 - index * (360 / 7)}deg` } as CSSProperties} className={`week-radial-day recipe-week-picker-day${dayHasRecipe ? ' has-recipe' : ''}${dragDay === index ? ' is-selected' : ''}`} data-day-label={day} data-drop-day={index} key={day} aria-label={`${day}, ${dateText(weekDate(index))}${dayHasRecipe ? ', Rezept eingeplant' : ''}`} title={`${day}, ${dateText(weekDate(index))}`} onClick={() => addMeal(dragRecipe, index)}>{abbreviations[index]}</button>;
+          return <button type="button" key={day} style={{ '--x': `${offset.x}px`, '--y': `${offset.y}px`, '--order': index } as CSSProperties} className={`recipe-week-picker-day${dayHasRecipe ? ' has-recipe' : ''}${dragDay === index ? ' is-selected' : ''}${dropConfirm === index ? ' is-chosen' : ''}`} aria-label={`${day}${dayHasRecipe ? ', schon ein Gericht geplant' : ''}`} onClick={() => confirmDrop(dragRecipe, index)}>{day.slice(0, 2)}</button>;
         })}
       </section>
     </div>}
