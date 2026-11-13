@@ -46,6 +46,9 @@ const PencilIcon = () => <svg className="pencil-icon" viewBox="0 0 40 40" aria-h
 const WeekActionIcon = ({ action }: { action: 'add' | 'remove' }) => <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={action === 'add' ? 'M12 5v14M5 12h14' : 'm7 7 10 10M17 7 7 17'} /></svg>;
 const SearchIcon = () => <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.8" cy="10.8" r="5.8" /><path d="m15.2 15.2 4 4" /></svg>;
 const PhotoIcon = () => <svg className="camera-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>;
+const DiceIcon = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.5h13l2.5 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12l2.5-4Z"/><path d="M3.5 7.5h17M10 5.5h4"/><circle cx="7.5" cy="16.5" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="16.5" cy="9.5" r=".8" fill="currentColor"/><circle cx="16.5" cy="15.5" r=".8" fill="currentColor"/></svg>;
+// Ab dieser Strecke löst das seitliche Ziehen einer Tageskachel die Aktion aus.
+const DAY_SWIPE_TRIGGER = 96;
 const scrambleCharacters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const HyperText = ({ text }: { text: string }) => {
   const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -247,6 +250,8 @@ export default function App() {
   const holdPointerRef = useRef<{ id: number; x: number; y: number; recipe: Recipe; element: HTMLElement } | null>(null);
   const [dayMenuIndex, setDayMenuIndex] = useState<number | null>(null);
   const [dayMenuAnchor, setDayMenuAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [daySwipe, setDaySwipe] = useState<{ index: number; dx: number } | null>(null);
+  const daySwipeActiveRef = useRef(false);
   const dayHoldTimerRef = useRef<number | null>(null);
   const dayHoldPointerRef = useRef<{ id: number; x: number; y: number; index: number; element: HTMLElement } | null>(null);
   const [dayActionHover, setDayActionHover] = useState<DayAction | null>(null);
@@ -642,7 +647,27 @@ export default function App() {
       setDayActionHover(action);
       return;
     }
-    if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 12 && dayMenuIndex === null) {
+    const dx = event.clientX - pointer.x;
+    const dy = event.clientY - pointer.y;
+    if (!daySwipeActiveRef.current && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      // Seitliches Ziehen wie in Apple Mail: kein Langdruck-Menü, die Kachel folgt dem Finger.
+      if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
+      dayHoldTimerRef.current = null;
+      daySwipeActiveRef.current = true;
+      try { pointer.element.setPointerCapture(pointer.id); } catch { /* Pointer capture can be unavailable in older Safari versions. */ }
+    }
+    if (daySwipeActiveRef.current) {
+      event.preventDefault();
+      const dayLocked = Boolean(lockedDays[localDateKey(weekDate(pointer.index))]);
+      const allowed = dx < 0 ? !dayLocked && recipes.length > 0 : weekOffset === 0;
+      // Über die Auslöse-Strecke hinaus und bei nicht möglicher Aktion wird es zäh.
+      const limited = !allowed ? dx * .18 : Math.abs(dx) <= DAY_SWIPE_TRIGGER ? dx : Math.sign(dx) * (DAY_SWIPE_TRIGGER + (Math.abs(dx) - DAY_SWIPE_TRIGGER) * .35);
+      const wasArmed = Math.abs(daySwipe?.dx ?? 0) >= DAY_SWIPE_TRIGGER;
+      if (allowed && wasArmed !== Math.abs(limited) >= DAY_SWIPE_TRIGGER) navigator.vibrate?.(10);
+      setDaySwipe({ index: pointer.index, dx: limited });
+      return;
+    }
+    if (Math.hypot(dx, dy) > 12 && dayMenuIndex === null) {
       if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
       dayHoldTimerRef.current = null; dayHoldPointerRef.current = null;
     }
@@ -650,12 +675,22 @@ export default function App() {
   const endDayHold = (event: ReactPointerEvent<HTMLElement>) => {
     if (dayHoldPointerRef.current?.id !== event.pointerId) return;
     if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
-    const active = dayActionActiveRef.current;
-    // pointercancel liefert keine verlässlichen Koordinaten: dann gilt die zuletzt angesteuerte Aktion.
-    const action = active ? dayMenuActionAt(event.clientX, event.clientY) ?? dayActionHover : null;
     const index = dayHoldPointerRef.current.index;
     dayHoldPointerRef.current = null;
     dayHoldTimerRef.current = null;
+    if (daySwipeActiveRef.current) {
+      daySwipeActiveRef.current = false;
+      const dx = daySwipe?.index === index ? daySwipe.dx : 0;
+      setDaySwipe(null);
+      suppressDayMealClickRef.current = true;
+      window.setTimeout(() => { suppressDayMealClickRef.current = false; }, 300);
+      if (dx <= -DAY_SWIPE_TRIGGER) randomizeDay(index);
+      else if (dx >= DAY_SWIPE_TRIGGER) toggleDayLock(index);
+      return;
+    }
+    const active = dayActionActiveRef.current;
+    // pointercancel liefert keine verlässlichen Koordinaten: dann gilt die zuletzt angesteuerte Aktion.
+    const action = active ? dayMenuActionAt(event.clientX, event.clientY) ?? dayActionHover : null;
     if (action) runDayAction(action, index);
     else if (active) closeDayMenu();
   };
@@ -845,7 +880,7 @@ export default function App() {
     setWeekOffset(value => value + direction);
   };
   const startWeekSwipe = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0) || (event.target as HTMLElement).closest('button,input')) return;
+    if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0) || (event.target as HTMLElement).closest('button,input,.weekday-card')) return;
     weekSwipeStartRef.current = { x: event.clientX, y: event.clientY };
   };
   const finishWeekSwipe = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -951,14 +986,18 @@ export default function App() {
         <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(isoWeek(monday)).padStart(2, '0')}</span><button aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}>‹</button><button aria-label="Nächste Woche" onClick={() => changeWeek(1)}>›</button></div>
         <div key={weekOffset} className={`weekday-grid week-swipe-in ${weekDirection === 1 ? 'from-next-week' : 'from-previous-week'}`} onPointerDown={startWeekSwipe} onPointerUp={finishWeekSwipe} onPointerCancel={() => { weekSwipeStartRef.current = null; }}>{dayNames.map((day, index) => {
           const date = weekDate(index); const key = localDateKey(date); const dayMeals = (plans[key] || []).map(id => recipes.find(recipe => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe)); const dayLocked = Boolean(lockedDays[key]);
-          return <article className={`weekday-card${dayLocked ? ' day-locked' : ''}`} key={day} data-drop-day={index} onPointerDown={event => startDayHold(event, index)} onPointerMove={moveDayHold} onPointerUp={endDayHold} onPointerCancel={endDayHold} onContextMenu={event => event.preventDefault()}>
+          const swipeDx = daySwipe?.index === index ? daySwipe.dx : 0;
+          return <div className="weekday-swipe" key={day}>
+            {swipeDx > 0 && <div className={`weekday-swipe-action swipe-lock${swipeDx >= DAY_SWIPE_TRIGGER ? ' is-armed' : ''}`} aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d={dayLocked ? 'M8 10V7a4 4 0 0 1 7.4-2.2' : 'M8 10V7a4 4 0 0 1 8 0v3'} /></svg><span>{dayLocked ? 'Freigeben' : 'Sperren'}</span></div>}
+            {swipeDx < 0 && <div className={`weekday-swipe-action swipe-random${swipeDx <= -DAY_SWIPE_TRIGGER ? ' is-armed' : ''}`} aria-hidden="true"><span>Zufall</span><DiceIcon /></div>}
+            <article className={`weekday-card${dayLocked ? ' day-locked' : ''}${daySwipe?.index === index ? ' is-swiping' : ''}`} style={swipeDx ? { transform: `translateX(${swipeDx}px)` } : undefined} data-drop-day={index} onPointerDown={event => startDayHold(event, index)} onPointerMove={moveDayHold} onPointerUp={endDayHold} onPointerCancel={endDayHold} onContextMenu={event => event.preventDefault()}>
             <div className="weekday-title"><strong>{day}</strong><span>{dateText(date)}</span>{weekOffset === 0 && index === 0 && <span className="today-mark">DIESE WOCHE</span>}</div>
             <div className="weekday-row"><div className="weekday-content">{dayMeals.length ? dayMeals.map((recipe, mealIndex) => <div className="weekday-meal" style={{ background: recipe.color }} key={`${recipe.id}-${mealIndex}`}>
               <button className="meal-open" onClick={event => { if (suppressDayMealClickRef.current) { event.preventDefault(); suppressDayMealClickRef.current = false; return; } openRecipe(recipe); }}>{randomMealAnimation?.date === key && randomMealAnimation.recipeId === recipe.id ? <HyperText key={randomMealAnimation.id} text={recipe.name} /> : recipe.name}</button>
               <button className="weekday-remove" style={{ '--meal-color': recipe.color } as CSSProperties} aria-label={`${recipe.name} entfernen`} onClick={() => removeMeal(key, mealIndex)}><WeekActionIcon action="remove" /></button>
             </div>) : <div className="weekday-empty">{dayLocked ? 'Kein Essen benötigt' : 'Noch nichts geplant'}</div>}</div>
             {dayMeals.length === 0 && !dayLocked && <button className="weekday-add" aria-label={`${day} hinzufügen`} onClick={() => beginAddingForDay(index)}><WeekActionIcon action="add" /></button>}</div>
-          </article>;
+          </article></div>;
         })}</div>
       </section>}
 
@@ -1009,7 +1048,7 @@ export default function App() {
           const state = `${dayActionHover === action ? ' is-selected' : ''}${dayActionConfirm === action ? ' is-chosen is-confirming' : ''}`;
           const style = { '--x': `${offset.x}px`, '--y': `${offset.y}px`, '--order': index } as CSSProperties;
           return action === 'random'
-            ? <button type="button" key={action} style={style} className={`recipe-week-picker-day day-action-option${state}`} aria-label={`Zufälliges Gericht für ${dayNames[dayMenuIndex]}`} onClick={() => runDayAction(action, dayMenuIndex)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.5h13l2.5 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12l2.5-4Z"/><path d="M3.5 7.5h17M10 5.5h4"/><circle cx="7.5" cy="16.5" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="16.5" cy="9.5" r=".8" fill="currentColor"/><circle cx="16.5" cy="15.5" r=".8" fill="currentColor"/></svg></button>
+            ? <button type="button" key={action} style={style} className={`recipe-week-picker-day day-action-option${state}`} aria-label={`Zufälliges Gericht für ${dayNames[dayMenuIndex]}`} onClick={() => runDayAction(action, dayMenuIndex)}><DiceIcon /></button>
             : <button type="button" key={action} style={style} className={`recipe-week-picker-day day-action-option day-lock-option${state}${dayMenuLocked ? ' is-locked' : ''}`} aria-label={`${dayActionLabel(action)}: ${dayNames[dayMenuIndex]}`} onClick={() => runDayAction(action, dayMenuIndex)}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path className="lock-shackle-open" d="M8 10V7a4 4 0 0 1 7.4-2.2"/><path className="lock-shackle-closed" d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></button>;
         })}
       </section>

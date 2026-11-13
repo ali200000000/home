@@ -521,3 +521,14 @@ input:not([type="checkbox"]):not([type="file"]),textarea,select{font-size:16px!i
 .recipe-week-picker .day-lock-option:not(.is-locked):not(.is-selected){background:#fff;color:var(--ink)}
 .recipe-week-picker .day-action-option svg{width:24px;height:24px}
 .recipe-week-picker-center.day-menu-center{background:var(--ink);color:#fff;font-size:20px;font-weight:800;letter-spacing:-.03em}
+.weekday-swipe{position:relative;overflow:hidden;border-radius:17px}
+.weekday-swipe .weekday-card{position:relative;z-index:1;touch-action:pan-y}
+.weekday-swipe .weekday-card.is-swiping{transition:none}
+.weekday-swipe-action{position:absolute;inset:0;display:flex;align-items:center;gap:10px;padding:0 26px;border-radius:17px;color:#fff;font-size:15px;font-weight:750;letter-spacing:-.01em;animation:picker-fade-in .12s ease-out both}
+.swipe-lock{justify-content:flex-start;background:#8a8a92}
+.swipe-random{justify-content:flex-end;background:#9aa9e6;transition:background-color .18s}
+.swipe-lock{transition:background-color .18s}
+.swipe-lock.is-armed{background:#55555c}
+.swipe-random.is-armed{background:var(--blue)}
+.weekday-swipe-action svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transform:scale(.82);transition:transform .28s cubic-bezier(.34,1.7,.64,1)}
+.weekday-swipe-action.is-armed svg{transform:scale(1.18)}
