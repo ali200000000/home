@@ -454,7 +454,7 @@ export default function App() {
   const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : view === 'inspiration' ? 'Inspiration' : 'Einkaufsliste';
   const weekRadialCenter = dragAnchor ? {
     left: Math.max(160, Math.min(dragAnchor.x, window.innerWidth - 160)),
-    top: Math.max(42, Math.min(dragAnchor.y - 66, window.innerHeight - 42)),
+    top: Math.max(172, Math.min(dragAnchor.y - 24, window.innerHeight - 172)),
   } : null;
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
@@ -853,7 +853,7 @@ export default function App() {
       </section>}
 
       {view === 'recipes' && <section className="view visible">
-        <div className="toolbar"><label className="recipe-search"><SearchIcon /><input className="search" aria-label="Rezepte durchsuchen" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /></label><div className="recipe-toolbar-actions"><button className="pill recipe-add-button" aria-label="Rezept hinzufügen" onClick={openNewRecipe}><WeekActionIcon action="add" /></button><div className="recipe-filter-wrap"><button className={`pill recipe-filter-button${filterOpen || recipeFilter !== 'Alle' ? ' is-active' : ''}`} aria-label="Rezepte filtern" aria-expanded={filterOpen} onClick={() => setFilterOpen(open => !open)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4" /></svg></button>{filterOpen && <div className="recipe-filter-menu" role="group" aria-label="Rezeptkategorie filtern">{recipeFilters.map(filter => <button type="button" key={filter} className={recipeFilter === filter ? 'selected' : ''} onClick={() => { setRecipeFilter(filter); setFilterOpen(false); }}>{filter}{recipeFilter === filter && <span aria-hidden="true">✓</span>}</button>)}</div>}</div><div className="recipe-layout-switch" role="tablist" aria-label="Darstellung der Rezepte">{([{ id: 'list', label: 'Listenansicht' }, { id: 'card', label: 'Kachelansicht' }] as const).map(option => <button type="button" role="tab" key={option.id} aria-label={option.label} title={option.label} aria-selected={recipeLayout === option.id} className={recipeLayout === option.id ? 'active' : ''} onClick={() => setRecipeLayout(option.id)}><RecipeLayoutIcon layout={option.id} /></button>)}</div></div></div>
+        <div className="toolbar"><label className="recipe-search"><SearchIcon /><input className="search" aria-label="Rezepte durchsuchen" value={query} onChange={event => setQuery(event.target.value)} placeholder="Rezept oder Zutat suchen …" /></label><div className="recipe-toolbar-actions"><button className="pill recipe-add-button" aria-label="Rezept hinzufügen" onClick={openNewRecipe}><WeekActionIcon action="add" /></button><div className="recipe-filter-wrap"><button className={`pill recipe-filter-button${filterOpen || recipeFilter !== 'Alle' ? ' is-active' : ''}`} aria-label="Rezepte filtern" aria-expanded={filterOpen} onClick={() => setFilterOpen(open => !open)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M7 12h10m-7 5h4" /></svg></button>{filterOpen && <div className="recipe-filter-menu" role="group" aria-label="Rezeptkategorie filtern">{recipeFilters.map(filter => <button type="button" key={filter} className={recipeFilter === filter ? 'selected' : ''} onClick={() => { setRecipeFilter(filter); setFilterOpen(false); }}>{filter}{recipeFilter === filter && <span aria-hidden="true">✓</span>}</button>)}</div>}</div><div className="recipe-layout-switch" role="tablist" aria-label="Darstellung der Rezepte">{([{ id: 'card', label: 'Kachelansicht' }, { id: 'list', label: 'Listenansicht' }] as const).map(option => <button type="button" role="tab" key={option.id} aria-label={option.label} title={option.label} aria-selected={recipeLayout === option.id} className={recipeLayout === option.id ? 'active' : ''} onClick={() => setRecipeLayout(option.id)}><RecipeLayoutIcon layout={option.id} /></button>)}</div></div></div>
         {targetDay !== null && <p className="eyebrow">Wähle ein Gericht für {dayNames[targetDay]}.</p>}
         <div className={`recipegrid recipe-reveal-grid recipe-layout-${recipeLayout}`}>{visibleRecipes.length ? visibleRecipes.map(recipe => <article className={`recipe-card recipe-card-reveal ${dragRecipe?.id === recipe.id && dragPoint ? 'long-press-active' : ''}`} key={recipe.id} onPointerDown={event => startRecipeHold(event, recipe)} onPointerMove={moveRecipeHold} onPointerUp={endRecipeHold} onPointerCancel={cancelRecipeHold} onContextMenu={event => event.preventDefault()}>
           <button className="recipe-card-open" onClick={event => { if (suppressRecipeClickRef.current) { event.preventDefault(); suppressRecipeClickRef.current = false; return; } targetDay !== null ? addMeal(recipe, targetDay) : openRecipe(recipe); }}><div className="recipe-art recipe-art-solid" style={{ background: recipe.color }}>{recipe.imageUrl && <img draggable="false" src={recipe.imageUrl} alt={`Foto von ${recipe.name}`} />}</div><span className="recipe-card-gradient" aria-hidden="true" /><div className="recipe-copy recipe-card-reveal-copy"><h3>{recipe.name}</h3><p>{recipe.ingredients.length} Zutaten</p></div></button>
@@ -862,27 +862,28 @@ export default function App() {
 
       {view === 'inspiration' && <section className="view visible inspiration-view"><InspirationGrid recipes={recipes} onSelect={openRecipe} /></section>}
 
-      {view === 'shopping' && <section className="panel full-list">
-        <div className="sectionhead"><h2>Aktueller Wocheneinkauf</h2><span className="count">{currentWeekItems.filter(item => item.done).length} / {currentWeekItems.length}</span></div>
-        <div className="progress"><i style={{ width: `${currentWeekItems.length ? currentWeekItems.filter(item => item.done).length / currentWeekItems.length * 100 : 0}%` }} /></div>
-        {currentWeekItems.length ? [...new Set(currentWeekItems.map(item => item.cat || 'Sonstiges'))].map(category => <div key={category}>
-          <div className="cat">{category}</div>{currentWeekItems.map((item, index) => item.cat === category || (!item.cat && category === 'Sonstiges') ? <label className={`item ${item.done ? 'done' : ''}`} key={`${item.key || item.name}-${index}`}>
-            <input type="checkbox" checked={item.done} onChange={() => toggleItem(index)} /><span>{item.name}</span><span className="qty">{item.qty || ''}</span>
-          </label> : null)}
-        </div>) : <div className="empty">Noch keine Einkäufe. Geplante Rezepte ergänzen ihre Zutaten automatisch.</div>}
-        <form className="additem" onSubmit={addShoppingItem}><input aria-label="Zutat hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Noch etwas hinzufügen …" /><button type="submit" aria-label="Zutat hinzufügen">＋</button></form>
+      {view === 'shopping' && <section className="shopping-list">
+        <header className="shopping-header"><div><p>Diese Woche</p><h2>Aktueller Wocheneinkauf</h2></div><span className="shopping-count"><b>{currentWeekItems.filter(item => item.done).length}</b> / {currentWeekItems.length}</span></header>
+        <div className="shopping-progress" aria-label={`${currentWeekItems.filter(item => item.done).length} von ${currentWeekItems.length} erledigt`}><i style={{ width: `${currentWeekItems.length ? currentWeekItems.filter(item => item.done).length / currentWeekItems.length * 100 : 0}%` }} /></div>
+        {currentWeekItems.length ? <div className="shopping-groups">{[...new Set(currentWeekItems.map(item => item.cat || 'Sonstiges'))].map(category => <section className="shopping-group" key={category}>
+          <h3>{category}</h3><div className="shopping-group-items">{currentWeekItems.map((item, index) => item.cat === category || (!item.cat && category === 'Sonstiges') ? <label className={`shopping-item${item.done ? ' done' : ''}`} key={`${item.key || item.name}-${index}`}>
+            <input type="checkbox" checked={item.done} onChange={() => toggleItem(index)} /><span className="shopping-item-name">{item.name}</span><span className="shopping-item-qty">{item.qty || ''}</span>
+          </label> : null)}</div>
+        </section>)}</div> : <div className="shopping-empty">Noch keine Einkäufe. Geplante Rezepte ergänzen ihre Zutaten automatisch.</div>}
+        <form className="shopping-add" onSubmit={addShoppingItem}><input aria-label="Zutat hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Noch etwas hinzufügen …" /><button type="submit" aria-label="Zutat hinzufügen"><WeekActionIcon action="add" /></button></form>
       </section>}
     </main>
     <nav className="mobile-nav" onPointerMove={handleDockPointerMove} onPointerLeave={resetDockPointer}>{(['plan', 'recipes', 'inspiration', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={`mobile-nav-item${view === id ? ' active' : ''}`} onClick={() => { setView(id); setTargetDay(null); }}><b className="dock-icon"><NavIcon view={id} /></b>{['Woche', 'Kochbuch', 'Inspiration', 'Liste'][index]}</button>)}</nav>
 
     {scheduleNotice && <div className="schedule-toast" role="status" aria-live="polite"><span className="schedule-toast-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.5" /></svg></span><span>{scheduleNotice}</span></div>}
 
-    {dragRecipe && weekRadialCenter && <div className="week-radial-backdrop" onClick={closeDragSheet}>
-      <section className="week-radial" style={weekRadialCenter} role="dialog" aria-modal="true" aria-label={`Wochentag für ${dragRecipe.name} auswählen`} onClick={event => event.stopPropagation()}>
+    {dragRecipe && weekRadialCenter && <div className="week-radial-backdrop recipe-week-picker-backdrop" onClick={closeDragSheet}>
+      <section className="week-radial recipe-week-picker" style={weekRadialCenter} role="dialog" aria-modal="true" aria-label={`Wochentag für ${dragRecipe.name} auswählen`} onClick={event => event.stopPropagation()}>
+        <div className="recipe-week-picker-center" style={{ background: dragRecipe.color }}>{dragRecipe.imageUrl ? <img src={dragRecipe.imageUrl} alt="" /> : <NavIcon view="recipes" />}<span>{dragRecipe.name}</span></div>
         {dayNames.map((day, index) => {
           const abbreviations = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
           const dayHasRecipe = (plans[localDateKey(weekDate(index))] || []).some(id => recipes.some(recipe => recipe.id === id));
-          return <button type="button" className={`week-radial-day${dayHasRecipe ? ' has-recipe' : ''}${dragDay === index ? ' is-selected' : ''}`} data-day-label={day} data-drop-day={index} key={day} aria-label={`${day}, ${dateText(weekDate(index))}${dayHasRecipe ? ', Rezept eingeplant' : ''}`} title={`${day}, ${dateText(weekDate(index))}`} onClick={() => addMeal(dragRecipe, index)}>{abbreviations[index]}</button>;
+          return <button type="button" style={{ '--day-order': index } as CSSProperties} className={`week-radial-day recipe-week-picker-day${dayHasRecipe ? ' has-recipe' : ''}${dragDay === index ? ' is-selected' : ''}`} data-day-label={day} data-drop-day={index} key={day} aria-label={`${day}, ${dateText(weekDate(index))}${dayHasRecipe ? ', Rezept eingeplant' : ''}`} title={`${day}, ${dateText(weekDate(index))}`} onClick={() => addMeal(dragRecipe, index)}>{abbreviations[index]}</button>;
         })}
       </section>
     </div>}
