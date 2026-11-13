@@ -516,3 +516,8 @@ input:not([type="checkbox"]):not([type="file"]),textarea,select{font-size:16px!i
 .shopping-item-remove{display:grid;place-items:center;flex:none;width:32px;height:32px;margin:-4px -6px -4px 0;padding:0;border:0;border-radius:10px;background:transparent;color:#9a9ea8;cursor:pointer}.shopping-item-remove:hover,.shopping-item-remove:focus-visible{background:#f1f2f6;color:var(--ink)}.shopping-item-remove svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
 .shopping-clear-done{display:block;margin:14px 0 0 auto;padding:6px 4px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;cursor:pointer}.shopping-clear-done:hover{color:var(--ink)}
 .recipe-card,.recipe-card img,.recipe-week-picker img{-webkit-user-select:none;user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
+.recipe-week-picker .day-action-option{animation:picker-day-out .5s calc(40ms + var(--order) * 24ms) cubic-bezier(.34,1.56,.64,1) backwards}
+.recipe-week-picker .day-lock-option.is-locked:not(.is-selected){background:#777780;color:#fff}
+.recipe-week-picker .day-lock-option:not(.is-locked):not(.is-selected){background:#fff;color:var(--ink)}
+.recipe-week-picker .day-action-option svg{width:24px;height:24px}
+.recipe-week-picker-center.day-menu-center{background:var(--ink);color:#fff;font-size:20px;font-weight:800;letter-spacing:-.03em}

@@ -157,6 +157,41 @@ function mergeSharedData(base: SharedAppData, local: SharedAppData, remote: Shar
   };
 }
 
+type ArcLayout = { center: { x: number; y: number }; items: { x: number; y: number }[] };
+// Pinterest-artig: Einträge im Bogen um den Finger, der Bogen zeigt zur Displaymitte.
+function arcLayout(anchor: { x: number; y: number }, count: number): ArcLayout {
+  const margin = 44;
+  const center = { x: Math.max(margin, Math.min(anchor.x, window.innerWidth - margin)), y: Math.max(margin, Math.min(anchor.y, window.innerHeight - margin)) };
+  const towardX = window.innerWidth / 2 - center.x;
+  const towardY = window.innerHeight / 2 - center.y;
+  const facing = Math.hypot(towardX, towardY) < 40 ? -Math.PI / 2 : Math.atan2(towardY, towardX);
+  // Wenige Einträge stehen weiter auseinander, sonst berühren sie sich.
+  const step = (count >= 5 ? 26 : 44) * Math.PI / 180;
+  const radius = 112;
+  const items = Array.from({ length: count }, (_, index) => {
+    const angle = facing + (index - (count - 1) / 2) * step;
+    return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+  });
+  // Erster Eintrag links (bzw. oben), egal in welche Richtung der Bogen zeigt.
+  const first = items[0]; const last = items[items.length - 1];
+  const horizontal = Math.abs(last.x - first.x) >= Math.abs(last.y - first.y);
+  if (horizontal ? first.x > last.x : first.y > last.y) items.reverse();
+  // In den Ecken reicht der Bogen sonst über den Rand: dann das ganze Menü nach innen schieben.
+  const pad = 34;
+  const xs = items.map(item => center.x + item.x); const ys = items.map(item => center.y + item.y);
+  center.x += Math.max(0, pad - Math.min(...xs)) - Math.max(0, Math.max(...xs) - (window.innerWidth - pad));
+  center.y += Math.max(0, pad - Math.min(...ys)) - Math.max(0, Math.max(...ys) - (window.innerHeight - pad));
+  return { center, items };
+}
+function nearestArcItem(layout: ArcLayout, x: number, y: number): number | null {
+  let nearest: number | null = null;
+  let nearestDistance = 46;
+  layout.items.forEach((offset, index) => {
+    const distance = Math.hypot(x - layout.center.x - offset.x, y - layout.center.y - offset.y);
+    if (distance < nearestDistance) { nearest = index; nearestDistance = distance; }
+  });
+  return nearest;
+}
 export default function App() {
   const [view, setView] = useState<ViewId>(() => {
     const savedView = initial<string>('tellerView', 'plan');
@@ -211,7 +246,7 @@ export default function App() {
   const holdTimerRef = useRef<number | null>(null);
   const holdPointerRef = useRef<{ id: number; x: number; y: number; recipe: Recipe; element: HTMLElement } | null>(null);
   const [dayMenuIndex, setDayMenuIndex] = useState<number | null>(null);
-  const [dayMenuCenter, setDayMenuCenter] = useState<{ left: number; top: number } | null>(null);
+  const [dayMenuAnchor, setDayMenuAnchor] = useState<{ x: number; y: number } | null>(null);
   const dayHoldTimerRef = useRef<number | null>(null);
   const dayHoldPointerRef = useRef<{ id: number; x: number; y: number; index: number; element: HTMLElement } | null>(null);
   const [dayActionHover, setDayActionHover] = useState<DayAction | null>(null);
@@ -510,41 +545,8 @@ export default function App() {
   const currentWeekItems = items;
   const userInitial = (displayName.trim().charAt(0) || session?.user.email?.trim().charAt(0) || '?').toLocaleUpperCase('de-DE');
   const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : view === 'inspiration' ? 'Inspiration' : 'Einkaufsliste';
-  // Pinterest-artig: Tage im Bogen um den Finger, der Bogen zeigt zur Displaymitte.
-  const dragPicker = useMemo(() => {
-    if (!dragAnchor) return null;
-    const margin = 44;
-    const center = { x: Math.max(margin, Math.min(dragAnchor.x, window.innerWidth - margin)), y: Math.max(margin, Math.min(dragAnchor.y, window.innerHeight - margin)) };
-    const towardX = window.innerWidth / 2 - center.x;
-    const towardY = window.innerHeight / 2 - center.y;
-    const facing = Math.hypot(towardX, towardY) < 40 ? -Math.PI / 2 : Math.atan2(towardY, towardX);
-    const step = 26 * Math.PI / 180;
-    const radius = 112;
-    const days = dayNames.map((_, index) => {
-      const angle = facing + (index - 3) * step;
-      return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
-    });
-    // Montag soll links (bzw. oben) liegen, egal in welche Richtung der Bogen zeigt.
-    const first = days[0]; const last = days[days.length - 1];
-    const horizontal = Math.abs(last.x - first.x) >= Math.abs(last.y - first.y);
-    if (horizontal ? first.x > last.x : first.y > last.y) days.reverse();
-    // In den Ecken reicht der Bogen sonst über den Rand: dann das ganze Menü nach innen schieben.
-    const pad = 34;
-    const xs = days.map(day => center.x + day.x); const ys = days.map(day => center.y + day.y);
-    center.x += Math.max(0, pad - Math.min(...xs)) - Math.max(0, Math.max(...xs) - (window.innerWidth - pad));
-    center.y += Math.max(0, pad - Math.min(...ys)) - Math.max(0, Math.max(...ys) - (window.innerHeight - pad));
-    return { center, days };
-  }, [dragAnchor]);
-  const pickerDayAt = (x: number, y: number) => {
-    if (!dragPicker) return null;
-    let nearest: number | null = null;
-    let nearestDistance = 46;
-    dragPicker.days.forEach((offset, index) => {
-      const distance = Math.hypot(x - dragPicker.center.x - offset.x, y - dragPicker.center.y - offset.y);
-      if (distance < nearestDistance) { nearest = index; nearestDistance = distance; }
-    });
-    return nearest;
-  };
+  const dragPicker = useMemo(() => dragAnchor ? arcLayout(dragAnchor, dayNames.length) : null, [dragAnchor]);
+  const pickerDayAt = (x: number, y: number) => dragPicker ? nearestArcItem(dragPicker, x, y) : null;
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -621,7 +623,9 @@ export default function App() {
       if (!pointer || pointer.id !== event.pointerId) return;
       try { pointer.element.setPointerCapture(pointer.id); } catch { /* Pointer capture can be unavailable in older Safari versions. */ }
       setDayMenuIndex(index);
-      setDayMenuCenter({ left: Math.max(160, Math.min(event.clientX, window.innerWidth - 160)), top: Math.max(42, Math.min(event.clientY - 66, window.innerHeight - 42)) });
+      setDayMenuAnchor({ x: event.clientX, y: event.clientY });
+      // Das Ziehen zur Aktion darf nicht als Wischen zur nächsten Woche zählen.
+      weekSwipeStartRef.current = null;
       dayActionActiveRef.current = true;
       suppressDayMealClickRef.current = true;
       window.setTimeout(() => { suppressDayMealClickRef.current = false; }, 700);
@@ -633,9 +637,9 @@ export default function App() {
     if (!pointer || pointer.id !== event.pointerId) return;
     if (dayActionActiveRef.current) {
       event.preventDefault();
-      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-day-action]');
-      const action = target?.dataset.dayAction;
-      setDayActionHover(action === 'random' || action === 'lock' ? action : null);
+      const action = dayMenuActionAt(event.clientX, event.clientY);
+      if (action !== dayActionHover && action !== null) navigator.vibrate?.(8);
+      setDayActionHover(action);
       return;
     }
     if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 12 && dayMenuIndex === null) {
@@ -647,23 +651,26 @@ export default function App() {
     if (dayHoldPointerRef.current?.id !== event.pointerId) return;
     if (dayHoldTimerRef.current !== null) window.clearTimeout(dayHoldTimerRef.current);
     const active = dayActionActiveRef.current;
-    const target = active ? document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-day-action]') : null;
-    const targetAction = target?.dataset.dayAction;
-    const action: DayAction | null = targetAction === 'random' || targetAction === 'lock' ? targetAction : dayActionHover;
+    // pointercancel liefert keine verlässlichen Koordinaten: dann gilt die zuletzt angesteuerte Aktion.
+    const action = active ? dayMenuActionAt(event.clientX, event.clientY) ?? dayActionHover : null;
     const index = dayHoldPointerRef.current.index;
     dayHoldPointerRef.current = null;
     dayHoldTimerRef.current = null;
-    if (action) {
-      setDayActionConfirm(action);
-      dayActionActiveRef.current = false;
-      window.setTimeout(() => {
-        if (action === 'random') randomizeDay(index);
-        else toggleDayLock(index);
-      }, 400);
-    }
+    if (action) runDayAction(action, index);
     else if (active) closeDayMenu();
   };
-  const closeDayMenu = () => { setDayMenuIndex(null); setDayMenuCenter(null); setDayActionHover(null); setDayActionConfirm(null); dayActionActiveRef.current = false; };
+  const runDayAction = (action: DayAction, index: number) => {
+    if (dayActionConfirm !== null) return;
+    setDayActionHover(action);
+    setDayActionConfirm(action);
+    dayActionActiveRef.current = false;
+    navigator.vibrate?.(15);
+    window.setTimeout(() => {
+      if (action === 'random') randomizeDay(index);
+      else toggleDayLock(index);
+    }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 420);
+  };
+  const closeDayMenu = () => { setDayMenuIndex(null); setDayMenuAnchor(null); setDayActionHover(null); setDayActionConfirm(null); dayActionActiveRef.current = false; };
   const randomizeDay = (index: number) => {
     const recipe = recipes[Math.floor(Math.random() * recipes.length)];
     if (recipe) {
@@ -751,7 +758,7 @@ export default function App() {
     navigator.vibrate?.(15);
     window.setTimeout(() => { setDropConfirm(null); addMeal(recipe, day); }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 320);
   };
-  const dragPointerActive = Boolean(dragRecipe && dragPoint);
+  const dragPointerActive = Boolean(dragRecipe && dragPoint) || dayMenuIndex !== null;
   useEffect(() => {
     if (!dragPointerActive) return;
     const stopPageScroll = (event: TouchEvent) => event.preventDefault();
@@ -870,6 +877,13 @@ export default function App() {
   };
   const dayMenuDateKey = dayMenuIndex === null ? null : localDateKey(weekDate(dayMenuIndex));
   const dayMenuLocked = dayMenuDateKey ? Boolean(lockedDays[dayMenuDateKey]) : false;
+  const dayMenuActions: DayAction[] = [...(dayMenuLocked ? [] : ['random' as const]), ...(weekOffset === 0 ? ['lock' as const] : [])];
+  const dayMenuLayout = dayMenuAnchor && dayMenuActions.length ? arcLayout(dayMenuAnchor, dayMenuActions.length) : null;
+  const dayMenuActionAt = (x: number, y: number) => {
+    const index = dayMenuLayout ? nearestArcItem(dayMenuLayout, x, y) : null;
+    return index === null ? null : dayMenuActions[index];
+  };
+  const dayActionLabel = (action: DayAction) => action === 'random' ? 'Zufälliges Gericht' : dayMenuLocked ? 'Tag freigeben' : 'Tag sperren';
 
   if (import.meta.env.PROD && !supabase) return <div className="shell"><main className="main"><section className="panel auth-panel">
     <div className="brand"><BrandLogo /></div><h1>Supabase noch nicht verbunden</h1>
@@ -976,20 +990,28 @@ export default function App() {
 
     {dragRecipe && dragPicker && <div className={`recipe-week-picker-backdrop${dropConfirm !== null ? ' is-confirming' : ''}`} onClick={closeDragSheet}>
       <p className="recipe-week-picker-caption" aria-live="polite"><b>{dragRecipe.name}</b><span>{dragDay !== null ? dayNames[dragDay] : 'Auf einen Tag ziehen'}</span></p>
-      <section className="recipe-week-picker" style={{ left: dragPicker.center.x, top: dragPicker.center.y, '--chosen-x': `${dropConfirm !== null ? dragPicker.days[dropConfirm].x : 0}px`, '--chosen-y': `${dropConfirm !== null ? dragPicker.days[dropConfirm].y : 0}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label={`Wochentag für ${dragRecipe.name} auswählen`} onClick={event => event.stopPropagation()}>
+      <section className="recipe-week-picker" style={{ left: dragPicker.center.x, top: dragPicker.center.y, '--chosen-x': `${dropConfirm !== null ? dragPicker.items[dropConfirm].x : 0}px`, '--chosen-y': `${dropConfirm !== null ? dragPicker.items[dropConfirm].y : 0}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label={`Wochentag für ${dragRecipe.name} auswählen`} onClick={event => event.stopPropagation()}>
         <div className={`recipe-week-picker-center${dragDay !== null ? ' is-aiming' : ''}`} style={{ background: dragRecipe.color }}>{dragRecipe.imageUrl ? <img draggable="false" src={dragRecipe.imageUrl} alt="" /> : <NavIcon view="recipes" />}</div>
         {dayNames.map((day, index) => {
-          const offset = dragPicker.days[index];
+          const offset = dragPicker.items[index];
           const dayHasRecipe = (plans[localDateKey(weekDate(index))] || []).some(id => recipes.some(recipe => recipe.id === id));
           return <button type="button" key={day} style={{ '--x': `${offset.x}px`, '--y': `${offset.y}px`, '--order': index } as CSSProperties} className={`recipe-week-picker-day${dayHasRecipe ? ' has-recipe' : ''}${dragDay === index ? ' is-selected' : ''}${dropConfirm === index ? ' is-chosen' : ''}`} aria-label={`${day}${dayHasRecipe ? ', schon ein Gericht geplant' : ''}`} onClick={() => confirmDrop(dragRecipe, index)}>{day.slice(0, 2)}</button>;
         })}
       </section>
     </div>}
 
-    {dayMenuIndex !== null && dayMenuCenter && <div className="week-radial-backdrop day-action-backdrop" onClick={closeDayMenu}>
-      <section className="week-radial day-action-radial" style={dayMenuCenter} role="dialog" aria-modal="true" aria-label={`Aktionen für ${dayNames[dayMenuIndex]}`} onClick={event => event.stopPropagation()}>
-        {!dayMenuLocked && <button type="button" data-day-action="random" data-day-label="Zufällig" className={`week-radial-day day-action-option${dayActionHover === 'random' ? ' is-selected' : ''}${dayActionConfirm === 'random' ? ' is-confirming' : ''}`} aria-label={`Zufälliges Gericht für ${dayNames[dayMenuIndex]}`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.5h13l2.5 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12l2.5-4Z"/><path d="M3.5 7.5h17M10 5.5h4"/><circle cx="7.5" cy="16.5" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="16.5" cy="9.5" r=".8" fill="currentColor"/><circle cx="16.5" cy="15.5" r=".8" fill="currentColor"/></svg></button>}
-        {weekOffset === 0 && <button type="button" data-day-action="lock" data-day-label={dayMenuLocked ? 'Freigeben' : 'Sperren'} className={`week-radial-day day-action-option day-lock-option${dayActionHover === 'lock' ? ' is-selected' : ''}${dayActionConfirm === 'lock' ? ' is-confirming' : ''}${dayMenuLocked ? ' is-locked' : ''}`} aria-label={`${dayMenuLocked ? 'Tag freigeben' : 'Tag sperren'}: ${dayNames[dayMenuIndex]}`}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path className="lock-shackle-open" d="M8 10V7a4 4 0 0 1 7.4-2.2"/><path className="lock-shackle-closed" d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></button>}
+    {dayMenuIndex !== null && dayMenuLayout && <div className={`recipe-week-picker-backdrop${dayActionConfirm ? ' is-confirming' : ''}`} onClick={closeDayMenu}>
+      <p className="recipe-week-picker-caption" aria-live="polite"><b>{dayNames[dayMenuIndex]}</b><span>{dayActionHover ? dayActionLabel(dayActionHover) : 'Auf eine Aktion ziehen'}</span></p>
+      <section className="recipe-week-picker" style={{ left: dayMenuLayout.center.x, top: dayMenuLayout.center.y } as CSSProperties} role="dialog" aria-modal="true" aria-label={`Aktionen für ${dayNames[dayMenuIndex]}`} onClick={event => event.stopPropagation()}>
+        <div className={`recipe-week-picker-center day-menu-center${dayActionHover ? ' is-aiming' : ''}`}>{dayNames[dayMenuIndex].slice(0, 2)}</div>
+        {dayMenuActions.map((action, index) => {
+          const offset = dayMenuLayout.items[index];
+          const state = `${dayActionHover === action ? ' is-selected' : ''}${dayActionConfirm === action ? ' is-chosen is-confirming' : ''}`;
+          const style = { '--x': `${offset.x}px`, '--y': `${offset.y}px`, '--order': index } as CSSProperties;
+          return action === 'random'
+            ? <button type="button" key={action} style={style} className={`recipe-week-picker-day day-action-option${state}`} aria-label={`Zufälliges Gericht für ${dayNames[dayMenuIndex]}`} onClick={() => runDayAction(action, dayMenuIndex)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.5h13l2.5 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12l2.5-4Z"/><path d="M3.5 7.5h17M10 5.5h4"/><circle cx="7.5" cy="16.5" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="16.5" cy="9.5" r=".8" fill="currentColor"/><circle cx="16.5" cy="15.5" r=".8" fill="currentColor"/></svg></button>
+            : <button type="button" key={action} style={style} className={`recipe-week-picker-day day-action-option day-lock-option${state}${dayMenuLocked ? ' is-locked' : ''}`} aria-label={`${dayActionLabel(action)}: ${dayNames[dayMenuIndex]}`} onClick={() => runDayAction(action, dayMenuIndex)}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path className="lock-shackle-open" d="M8 10V7a4 4 0 0 1 7.4-2.2"/><path className="lock-shackle-closed" d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></button>;
+        })}
       </section>
     </div>}
 
