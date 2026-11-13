@@ -453,8 +453,8 @@ export default function App() {
   const userInitial = (displayName.trim().charAt(0) || session?.user.email?.trim().charAt(0) || '?').toLocaleUpperCase('de-DE');
   const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : view === 'inspiration' ? 'Inspiration' : 'Einkaufsliste';
   const weekRadialCenter = dragAnchor ? {
-    left: Math.max(160, Math.min(dragAnchor.x, window.innerWidth - 160)),
-    top: Math.max(172, Math.min(dragAnchor.y - 24, window.innerHeight - 172)),
+    left: Math.max(148, Math.min(dragAnchor.x, window.innerWidth - 148)),
+    top: Math.max(148, Math.min(dragAnchor.y, window.innerHeight - 148)),
   } : null;
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
@@ -883,7 +883,7 @@ export default function App() {
         {dayNames.map((day, index) => {
           const abbreviations = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
           const dayHasRecipe = (plans[localDateKey(weekDate(index))] || []).some(id => recipes.some(recipe => recipe.id === id));
-          return <button type="button" style={{ '--day-order': index } as CSSProperties} className={`week-radial-day recipe-week-picker-day${dayHasRecipe ? ' has-recipe' : ''}${dragDay === index ? ' is-selected' : ''}`} data-day-label={day} data-drop-day={index} key={day} aria-label={`${day}, ${dateText(weekDate(index))}${dayHasRecipe ? ', Rezept eingeplant' : ''}`} title={`${day}, ${dateText(weekDate(index))}`} onClick={() => addMeal(dragRecipe, index)}>{abbreviations[index]}</button>;
+          return <button type="button" style={{ '--day-order': index, '--day-angle': `${index * (360 / 7) - 90}deg`, '--day-counter-angle': `${90 - index * (360 / 7)}deg` } as CSSProperties} className={`week-radial-day recipe-week-picker-day${dayHasRecipe ? ' has-recipe' : ''}${dragDay === index ? ' is-selected' : ''}`} data-day-label={day} data-drop-day={index} key={day} aria-label={`${day}, ${dateText(weekDate(index))}${dayHasRecipe ? ', Rezept eingeplant' : ''}`} title={`${day}, ${dateText(weekDate(index))}`} onClick={() => addMeal(dragRecipe, index)}>{abbreviations[index]}</button>;
         })}
       </section>
     </div>}
