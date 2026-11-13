@@ -72,3 +72,7 @@ using (bucket_id = 'recipe-images' and (select public.app_is_member()));
 drop policy if exists "household members upload recipe images" on storage.objects;
 create policy "household members upload recipe images" on storage.objects for insert to authenticated
 with check (bucket_id = 'recipe-images' and (select public.app_is_member()) and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- Versionsnummer gegen gegenseitiges Überschreiben: gespeichert wird nur,
+-- wenn die Zeile noch die Version hat, die die App zuletzt gesehen hat.
+alter table public.app_state add column if not exists version bigint not null default 0;

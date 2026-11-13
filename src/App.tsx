@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import type { Session } from '@supabase/supabase-js';
+import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import './styles.css';
 import { supabase, type SharedAppData } from './supabase';
 import InspirationGrid from './InspirationGrid';
@@ -144,6 +144,10 @@ function mergeLockedDays(base: Record<string, true> = {}, local: Record<string, 
   }
   return result;
 }
+const toSharedData = (raw: unknown): SharedAppData => {
+  const next = (raw || {}) as Partial<SharedAppData>;
+  return { recipes: Array.isArray(next.recipes) ? next.recipes : defaults, plans: next.plans || {}, lockedDays: next.lockedDays || {}, items: Array.isArray(next.items) ? next.items : [] };
+};
 function mergeSharedData(base: SharedAppData, local: SharedAppData, remote: SharedAppData): SharedAppData {
   return {
     recipes: mergeKeyedArrays(base.recipes as Record<string, unknown>[], local.recipes as Record<string, unknown>[], remote.recipes as Record<string, unknown>[], recipe => String(recipe.id)),
@@ -243,8 +247,50 @@ export default function App() {
   const syncMenuRef = useRef<HTMLDivElement>(null);
   const currentDataRef = useRef(JSON.stringify({ recipes, plans, lockedDays, items }));
   const persistedDataRef = useRef<string | null>(null);
+  // Versionsnummer der Datenbankzeile; null = Zeile existiert noch nicht.
+  const versionRef = useRef<number | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingSavesRef = useRef(0);
+  const userId = session?.user.id;
+  const applySharedData = (data: SharedAppData) => {
+    currentDataRef.current = JSON.stringify(data);
+    setRecipes(data.recipes as Recipe[]);
+    setPlans(data.plans);
+    setLockedDays(data.lockedDays);
+    setItems(data.items as Item[]);
+  };
+  // Speichert nur, wenn die Zeile noch die bekannte Version hat. Hat jemand anderes
+  // zwischendurch gespeichert, werden beide Stände zusammengeführt und erneut gespeichert.
+  const writeSharedData = async (client: SupabaseClient, initial: SharedAppData): Promise<SharedAppData> => {
+    let data = initial;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const version = versionRef.current;
+      const updatedAt = new Date().toISOString();
+      const result = version === null
+        ? await client.from('app_state').insert({ id: 1, payload: data, version: 1, updated_at: updatedAt }).select('version')
+        : await client.from('app_state').update({ payload: data, version: version + 1, updated_at: updatedAt }).eq('id', 1).eq('version', version).select('version');
+      if (result.error && result.error.code !== '23505') {
+        throw new Error(result.error.code === '42703' ? 'In der Datenbank fehlt die Spalte „version“. Bitte supabase/setup.sql erneut ausführen.' : result.error.message);
+      }
+      if (!result.error && result.data.length) {
+        versionRef.current = Number(result.data[0].version);
+        persistedDataRef.current = JSON.stringify(data);
+        return data;
+      }
+      const { data: row, error } = await client.from('app_state').select('payload, version').eq('id', 1).maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!row) { versionRef.current = null; continue; }
+      const remote = toSharedData(row.payload);
+      const base = persistedDataRef.current ? JSON.parse(persistedDataRef.current) as SharedAppData : remote;
+      const merged = mergeSharedData(base, data, remote);
+      persistedDataRef.current = JSON.stringify(remote);
+      versionRef.current = Number(row.version) || 0;
+      applySharedData(merged);
+      if (sameValue(merged, remote)) return merged;
+      data = merged;
+    }
+    throw new Error('Zu viele gleichzeitige Änderungen. Bitte gleich noch einmal versuchen.');
+  };
 
   useEffect(() => {
     if (!scheduleNotice) return;
@@ -295,9 +341,9 @@ export default function App() {
       setDisplayName(String(data.session?.user.user_metadata?.display_name || ''));
     });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      // Token-Erneuerungen liefern ein neues Session-Objekt; neu geladen wird nur bei Nutzerwechsel (Effekte hängen an userId).
       setSession(nextSession);
       setDisplayName(String(nextSession?.user.user_metadata?.display_name || ''));
-      setLoaded(false);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -320,7 +366,7 @@ export default function App() {
         if (status === 'SUBSCRIBED') void channel.track({ display_name: name });
       });
     return () => { void client.removeChannel(channel); };
-  }, [session, displayName]);
+  }, [userId, displayName]);
 
   useEffect(() => {
     const client = supabase;
@@ -333,24 +379,18 @@ export default function App() {
       setDataError('');
       setLoadFailed(false);
       try {
-        const { data, error } = await client.from('app_state').select('payload').eq('id', 1).abortSignal(abortController.signal).maybeSingle();
+        const { data, error } = await client.from('app_state').select('payload, version').eq('id', 1).abortSignal(abortController.signal).maybeSingle();
         if (cancelled) return;
         if (error) {
           setLoadFailed(true);
           setDataError(abortController.signal.aborted ? 'Supabase antwortet gerade nicht. Prüfe die Verbindung und versuche es erneut.' : `Datenbankzugriff fehlgeschlagen: ${error.message}`);
         } else if (data?.payload) {
-          const payload = data.payload as SharedAppData;
-          const nextRecipes = payload.recipes as Recipe[] || defaults;
-          const nextPlans = payload.plans || {};
-          const nextLockedDays = payload.lockedDays || {};
-          const nextItems = payload.items as Item[] || [];
-          persistedDataRef.current = JSON.stringify({ recipes: nextRecipes, plans: nextPlans, lockedDays: nextLockedDays, items: nextItems });
-          currentDataRef.current = persistedDataRef.current;
-          setRecipes(nextRecipes);
-          setPlans(nextPlans);
-          setLockedDays(nextLockedDays);
-          setItems(nextItems);
+          const loadedData = toSharedData(data.payload);
+          versionRef.current = Number(data.version) || 0;
+          applySharedData(loadedData);
+          persistedDataRef.current = currentDataRef.current;
         } else {
+          versionRef.current = null;
           persistedDataRef.current = JSON.stringify({ recipes: defaults, plans: {}, lockedDays: {}, items: [] });
         }
       } catch (error) {
@@ -365,27 +405,21 @@ export default function App() {
     void load();
     const channel = client.channel('shared-app-state')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_state', filter: 'id=eq.1' }, payload => {
-        const next = (payload.new as { payload?: SharedAppData }).payload;
-        if (!next) return;
-        const incoming: SharedAppData = {
-          recipes: Array.isArray(next.recipes) ? next.recipes : defaults,
-          plans: next.plans || {},
-          lockedDays: next.lockedDays || {},
-          items: Array.isArray(next.items) ? next.items : [],
-        };
+        const row = payload.new as { payload?: SharedAppData; version?: number };
+        if (!row.payload) return;
+        const incomingVersion = Number(row.version) || 0;
+        // Verspätetes Echo einer älteren Speicherung ignorieren.
+        if (versionRef.current !== null && incomingVersion < versionRef.current) return;
+        const incoming = toSharedData(row.payload);
         const current = JSON.parse(currentDataRef.current) as SharedAppData;
         const previous = persistedDataRef.current ? JSON.parse(persistedDataRef.current) as SharedAppData : incoming;
-        const merged = mergeSharedData(previous, current, incoming);
         persistedDataRef.current = JSON.stringify(incoming);
-        currentDataRef.current = JSON.stringify(merged);
-        setRecipes(merged.recipes as Recipe[]);
-        setPlans(merged.plans);
-        setLockedDays(merged.lockedDays);
-        setItems(merged.items as Item[]);
+        versionRef.current = incomingVersion;
+        applySharedData(mergeSharedData(previous, current, incoming));
       })
       .subscribe();
     return () => { cancelled = true; window.clearTimeout(timeout); abortController.abort(); void client.removeChannel(channel); };
-  }, [session, loadAttempt]);
+  }, [userId, loadAttempt]);
 
   useEffect(() => {
     if (!loaded || loadFailed) return;
@@ -393,7 +427,7 @@ export default function App() {
     const serialized = JSON.stringify(snapshot);
     currentDataRef.current = serialized;
     const client = supabase;
-    if (!client || !session) {
+    if (!client || !userId) {
       localStorage.setItem('tellerRecipes', JSON.stringify(recipes));
       localStorage.setItem('tellerPlans', JSON.stringify(plans));
       localStorage.setItem('tellerLockedDays', JSON.stringify(lockedDays));
@@ -411,11 +445,11 @@ export default function App() {
       const saveLatest = async () => {
         try {
           const latest = JSON.parse(currentDataRef.current) as SharedAppData;
-          const latestSerialized = JSON.stringify(latest);
-          if (latestSerialized === persistedDataRef.current) return;
-          const { error } = await client.from('app_state').upsert({ id: 1, payload: latest, updated_at: new Date().toISOString() });
-          setDataError(error ? `Speichern fehlgeschlagen: ${error.message}` : '');
-          if (!error) persistedDataRef.current = latestSerialized;
+          if (JSON.stringify(latest) === persistedDataRef.current) return;
+          await writeSharedData(client, latest);
+          setDataError('');
+        } catch (error) {
+          setDataError(`Speichern fehlgeschlagen: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
         } finally {
           pendingSavesRef.current -= 1;
           setSaving(pendingSavesRef.current > 0);
@@ -424,7 +458,7 @@ export default function App() {
       saveQueueRef.current = saveQueueRef.current.then(saveLatest, saveLatest);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [recipes, plans, lockedDays, items, session, loaded, loadFailed]);
+  }, [recipes, plans, lockedDays, items, userId, loaded, loadFailed]);
 
   useEffect(() => {
     if (!loaded || loadFailed) return;
@@ -724,12 +758,10 @@ export default function App() {
       }
       if (supabase && session) {
         const current = JSON.parse(currentDataRef.current) as SharedAppData;
-        const payload: SharedAppData = { ...current, recipes: nextRecipes };
-        const serialized = JSON.stringify(payload);
-        const { error } = await supabase.from('app_state').upsert({ id: 1, payload, updated_at: new Date().toISOString() });
-        if (error) throw new Error(`Rezept konnte nicht in der Datenbank gespeichert werden: ${error.message}`);
-        currentDataRef.current = serialized;
-        persistedDataRef.current = serialized;
+        let written: SharedAppData;
+        try { written = await writeSharedData(supabase, { ...current, recipes: nextRecipes }); }
+        catch (error) { throw new Error(`Rezept konnte nicht in der Datenbank gespeichert werden: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`); }
+        nextRecipes = written.recipes as Recipe[];
       }
       setDataError('');
       setRecipes(nextRecipes);
