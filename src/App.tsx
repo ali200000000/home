@@ -75,9 +75,24 @@ const normalizeSearch = (value: string) => value.trim().toLocaleLowerCase('de-DE
 const categoryFor = (name: string) => {
   const n = name.toLocaleLowerCase('de-DE');
   if (/zitrone|spinat|avocado|gurke|tomat|basilikum|erbse|paprika|salbei/.test(n)) return 'Obst & Gemüse';
-  if (/ricotta|tofu|burrata|feta|butter|parmesan|ei|hummus/.test(n)) return 'Kühlregal';
+  if (/ricotta|tofu|burrata|feta|butter|parmesan|\beier?\b|hummus/.test(n)) return 'Kühlregal';
   if (/pasta|reis|brot|gnocchi|haselnuss|oliv|sojasauce/.test(n)) return 'Vorrat';
   return 'Sonstiges';
+};
+const mondayOf = (date: Date) => { const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate()); monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7); return monday; };
+// ISO-8601: Die Woche mit dem ersten Donnerstag des Jahres ist KW 1.
+const isoWeek = (date: Date) => {
+  const thursday = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 3 - (date.getDay() + 6) % 7);
+  const firstThursday = new Date(thursday.getFullYear(), 0, 4);
+  return 1 + Math.round(((thursday.getTime() - firstThursday.getTime()) / 86400000 - 3 + (firstThursday.getDay() + 6) % 7) / 7);
+};
+const timeLevels = ['schnell', 'mittel', 'lang'] as const;
+// Ältere Rezepte speichern Minuten („25 min“), neue eine Stufe.
+const timeLevelOf = (time: string) => {
+  const level = timeLevels.indexOf(time.toLocaleLowerCase('de-DE') as typeof timeLevels[number]);
+  if (level >= 0) return level;
+  const minutes = parseInt(time, 10) || 25;
+  return minutes <= 20 ? 0 : minutes <= 35 ? 1 : 2;
 };
 const parseQuantity = (raw: string) => {
   const match = raw.trim().match(/^(\d+(?:[.,]\d+)?|[¼½¾])\s*(.*)$/);
@@ -169,8 +184,16 @@ export default function App() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [weekDirection, setWeekDirection] = useState<1 | -1>(1);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
-  const monday = useMemo(() => new Date(2026, 10, 9 + weekOffset * 7), [weekOffset]);
-  const shoppingMonday = useMemo(() => new Date(2026, 10, 9), []);
+  const [today, setToday] = useState(() => new Date());
+  useEffect(() => {
+    const refresh = () => setToday(current => localDateKey(current) === localDateKey(new Date()) ? current : new Date());
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    const interval = window.setInterval(refresh, 60000);
+    return () => { document.removeEventListener('visibilitychange', refresh); window.removeEventListener('focus', refresh); window.clearInterval(interval); };
+  }, []);
+  const shoppingMonday = useMemo(() => mondayOf(today), [today]);
+  const monday = useMemo(() => { const date = new Date(shoppingMonday); date.setDate(date.getDate() + weekOffset * 7); return date; }, [shoppingMonday, weekOffset]);
   function weekDate(index: number) { const date = new Date(monday); date.setDate(date.getDate() + index); return date; }
   const [targetDay, setTargetDay] = useState<number | null>(null);
   const [scheduleNotice, setScheduleNotice] = useState('');
@@ -448,7 +471,7 @@ export default function App() {
 
   const normalizedQuery = normalizeSearch(query);
   const recipeFilters = ['Alle', 'schnell', 'mittel', 'lang'];
-  const visibleRecipes = recipes.filter(recipe => normalizeSearch([recipe.name, ...recipe.ingredients.flatMap(([name, amount]) => [name, amount])].join(' ')).includes(normalizedQuery) && (recipeFilter === 'Alle' || recipe.time.toLocaleLowerCase('de-DE') === recipeFilter));
+  const visibleRecipes = recipes.filter(recipe => normalizeSearch([recipe.name, ...recipe.ingredients.flatMap(([name, amount]) => [name, amount])].join(' ')).includes(normalizedQuery) && (recipeFilter === 'Alle' || timeLevels[timeLevelOf(recipe.time)] === recipeFilter));
   const currentWeekItems = items;
   const userInitial = (displayName.trim().charAt(0) || session?.user.email?.trim().charAt(0) || '?').toLocaleUpperCase('de-DE');
   const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : view === 'inspiration' ? 'Inspiration' : 'Einkaufsliste';
@@ -667,7 +690,7 @@ export default function App() {
     setFormName(''); setFormTimeLevel(1); setFormIngredients([['', '']]); setFormImage(null); setImagePreview(''); setActiveRecipe(null); setModalMode('new');
   };
   const openEditRecipe = (recipe: Recipe) => {
-    setActiveRecipe(recipe); setFormName(recipe.name); setFormTimeLevel(['schnell', 'mittel', 'lang'].indexOf(recipe.time.toLocaleLowerCase('de-DE')) >= 0 ? ['schnell', 'mittel', 'lang'].indexOf(recipe.time.toLocaleLowerCase('de-DE')) : (parseInt(recipe.time, 10) || 25) <= 20 ? 0 : (parseInt(recipe.time, 10) || 25) <= 35 ? 1 : 2);
+    setActiveRecipe(recipe); setFormName(recipe.name); setFormTimeLevel(timeLevelOf(recipe.time));
     setFormIngredients(recipe.ingredients.length ? recipe.ingredients.map(item => [...item] as [string, string]) : [['', '']]);
     setFormImage(null); setImagePreview(recipe.imageUrl || '');
     setModalMode('edit');
@@ -736,6 +759,9 @@ export default function App() {
     setNewItem('');
   };
   const toggleItem = (index: number) => setItems(previous => previous.map((item, i) => i === index ? { ...item, done: !item.done } : item));
+  const removeItem = (index: number) => setItems(previous => previous.filter((item, i) => i !== index || item.auto));
+  // Rezeptzutaten kommen aus dem Wochenplan und bleiben; nur eigene Einträge werden entfernt.
+  const clearDoneItems = () => setItems(previous => previous.filter(item => item.auto || !item.done));
   const beginAddingForDay = (day: number) => { setTargetDay(day); setView('recipes'); setQuery(''); };
   const changeWeek = (direction: 1 | -1) => {
     setWeekDirection(direction);
@@ -838,7 +864,7 @@ export default function App() {
       {loadFailed && <section className="panel"><p>{dataError || 'Der Zugriff auf die gemeinsame Datenbank ist fehlgeschlagen.'} Prüfe die Verbindung und die Mitgliedschaft in `app_members`.</p><button className="primary" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Erneut versuchen</button></section>}
 
       {view === 'plan' && <section className="view visible">
-        <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(Math.ceil((monday.getTime() - new Date(monday.getFullYear(), 0, 4).getTime()) / 604800000) + 1).padStart(2, '0')}</span><button aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}>‹</button><button aria-label="Nächste Woche" onClick={() => changeWeek(1)}>›</button></div>
+        <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(isoWeek(monday)).padStart(2, '0')}</span><button aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}>‹</button><button aria-label="Nächste Woche" onClick={() => changeWeek(1)}>›</button></div>
         <div key={weekOffset} className={`weekday-grid week-swipe-in ${weekDirection === 1 ? 'from-next-week' : 'from-previous-week'}`} onPointerDown={startWeekSwipe} onPointerUp={finishWeekSwipe} onPointerCancel={() => { weekSwipeStartRef.current = null; }}>{dayNames.map((day, index) => {
           const date = weekDate(index); const key = localDateKey(date); const dayMeals = (plans[key] || []).map(id => recipes.find(recipe => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe)); const dayLocked = Boolean(lockedDays[key]);
           return <article className={`weekday-card${dayLocked ? ' day-locked' : ''}`} key={day} data-drop-day={index} onPointerDown={event => startDayHold(event, index)} onPointerMove={moveDayHold} onPointerUp={endDayHold} onPointerCancel={endDayHold} onContextMenu={event => event.preventDefault()}>
@@ -867,9 +893,10 @@ export default function App() {
         <div className="shopping-progress" aria-label={`${currentWeekItems.filter(item => item.done).length} von ${currentWeekItems.length} erledigt`}><i style={{ width: `${currentWeekItems.length ? currentWeekItems.filter(item => item.done).length / currentWeekItems.length * 100 : 0}%` }} /></div>
         {currentWeekItems.length ? <div className="shopping-groups">{[...new Set(currentWeekItems.map(item => item.cat || 'Sonstiges'))].map(category => <section className="shopping-group" key={category}>
           <h3>{category}</h3><div className="shopping-group-items">{currentWeekItems.map((item, index) => item.cat === category || (!item.cat && category === 'Sonstiges') ? <label className={`shopping-item${item.done ? ' done' : ''}`} key={`${item.key || item.name}-${index}`}>
-            <input type="checkbox" checked={item.done} onChange={() => toggleItem(index)} /><span className="shopping-item-name">{item.name}</span><span className="shopping-item-qty">{item.qty || ''}</span>
+            <input type="checkbox" checked={item.done} onChange={() => toggleItem(index)} /><span className="shopping-item-name">{item.name}</span><span className="shopping-item-qty">{item.qty || ''}</span>{!item.auto && <button type="button" className="shopping-item-remove" aria-label={`${item.name} entfernen`} onClick={event => { event.preventDefault(); removeItem(index); }}><WeekActionIcon action="remove" /></button>}
           </label> : null)}</div>
         </section>)}</div> : <div className="shopping-empty">Noch keine Einkäufe. Geplante Rezepte ergänzen ihre Zutaten automatisch.</div>}
+        {currentWeekItems.some(item => !item.auto && item.done) && <button type="button" className="shopping-clear-done" onClick={clearDoneItems}>Erledigte eigene Einträge entfernen</button>}
         <form className="shopping-add" onSubmit={addShoppingItem}><input aria-label="Zutat hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Noch etwas hinzufügen …" /><button type="submit" aria-label="Zutat hinzufügen"><WeekActionIcon action="add" /></button></form>
       </section>}
     </main>
