@@ -885,8 +885,6 @@ export default function App() {
   </section></main></div>;
 
   if (supabase && !session) return <div className="shell auth-shell"><main className="main auth-main"><section className="auth-panel login-panel">
-    <div className="brand login-brand"><img className="login-app-icon" src={`${import.meta.env.BASE_URL}apple-touch-icon.png`} alt="" /><span>mealy</span></div><h1>Hello!</h1>
-    <p>Hier Mail und Passwort eintragen - dann geht´s los!</p>
     <form className="auth-form" onSubmit={signIn}>
       <label>Dein Name<input type="text" autoComplete="nickname" maxLength={40} required value={displayName} onChange={event => setDisplayName(event.target.value)} placeholder="z. B. Alex" /></label>
       <label>E-Mail-Adresse<input type="email" autoComplete="username" required value={email} onChange={event => { const value = event.target.value; setEmail(value); const savedName = localStorage.getItem(`komiDisplayName:${value.trim().toLocaleLowerCase('de-DE')}`); if (savedName) setDisplayName(savedName); }} /></label>
