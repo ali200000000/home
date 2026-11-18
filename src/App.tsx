@@ -279,7 +279,7 @@ export default function App() {
   const [imagePreview, setImagePreview] = useState('');
   const [recipeSaving, setRecipeSaving] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [authReady, setAuthReady] = useState(!supabase);
   const [displayName, setDisplayName] = useState('');
   const [onlineUsers, setOnlineUsers] = useState<{ id: string; name: string }[]>([]);
   const [email, setEmail] = useState('');
@@ -393,11 +393,12 @@ export default function App() {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setDisplayName(String(data.session?.user.user_metadata?.display_name || ''));
-    });
+    }).finally(() => setAuthReady(true));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       // Token-Erneuerungen liefern ein neues Session-Objekt; neu geladen wird nur bei Nutzerwechsel (Effekte hängen an userId).
       setSession(nextSession);
       setDisplayName(String(nextSession?.user.user_metadata?.display_name || ''));
+      setAuthReady(true);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -562,7 +563,7 @@ export default function App() {
   const visibleRecipes = recipes.filter(recipe => normalizeSearch([recipe.name, ...recipe.ingredients.flatMap(([name, amount]) => [name, amount])].join(' ')).includes(normalizedQuery) && (recipeFilter === 'Alle' || timeLevels[timeLevelOf(recipe.time)] === recipeFilter));
   const currentWeekItems = items;
   const userInitial = (displayName.trim().charAt(0) || session?.user.email?.trim().charAt(0) || '?').toLocaleUpperCase('de-DE');
-  const title = view === 'plan' ? 'Wochenplan' : view === 'recipes' ? 'Kochbuch' : view === 'inspiration' ? 'Inspiration' : 'Einkaufsliste';
+  const title = view === 'plan' ? 'WOCHENPLAN' : view === 'recipes' ? 'KOCHBUCH' : view === 'inspiration' ? 'Inspiration' : 'EINKAUFSLISTE';
   const dragPicker = useMemo(() => dragAnchor ? arcLayout(dragAnchor, dayNames.length) : null, [dragAnchor]);
   const pickerDayAt = (x: number, y: number) => dragPicker ? nearestArcItem(dragPicker, x, y) : null;
 
@@ -961,15 +962,7 @@ export default function App() {
     <p className="setup-note">Im Client darf nur der Publishable-Key stehen, niemals ein Service-Role-Key.</p>
   </section></main></div>;
 
-  if (supabase && !session && showWelcome) return <div className="shell auth-shell welcome-shell"><main className="main auth-main welcome-main"><section className="welcome-panel" aria-labelledby="welcome-title">
-    <div className="brand login-brand welcome-brand"><img className="login-app-icon" src={`${import.meta.env.BASE_URL}apple-touch-icon.png`} alt="" /><span>mealy</span></div>
-    <p className="welcome-kicker">GEMEINSAM PLANEN</p><h1 id="welcome-title">Was gibt’s heute?</h1><p className="welcome-copy">Ideen sammeln, Rezepte wählen und die Woche ganz entspannt planen.</p>
-    <div className="welcome-marquees" aria-hidden="true">
-      <div className="welcome-marquee"><div className="welcome-marquee-track">{['PASTA', 'GEMEINSAM KOCHEN', 'LIEBLINGSGERICHTE', 'WOCHENPLAN', 'PASTA', 'GEMEINSAM KOCHEN', 'LIEBLINGSGERICHTE', 'WOCHENPLAN'].map((item, index) => <span key={`first-${index}`}>{item}</span>)}</div></div>
-      <div className="welcome-marquee welcome-marquee-reverse"><div className="welcome-marquee-track">{['EINFACH PLANEN', 'GUT ESSEN', 'EINKAUFSLISTE', 'MEAL IDEAS', 'EINFACH PLANEN', 'GUT ESSEN', 'EINKAUFSLISTE', 'MEAL IDEAS'].map((item, index) => <span key={`second-${index}`}>{item}</span>)}</div></div>
-    </div>
-    <button type="button" className="welcome-start" onClick={() => setShowWelcome(false)}>Let’s go <span aria-hidden="true">→</span></button>
-  </section></main></div>;
+  if (supabase && !authReady) return <div className="shell auth-shell"><main className="main auth-main"><span className="auth-restore" role="status">Bitte einen Moment …</span></main></div>;
 
   if (supabase && !session) return <div className="shell auth-shell"><main className="main auth-main"><section className="auth-panel login-panel">
     <form className="auth-form" onSubmit={signIn}>
