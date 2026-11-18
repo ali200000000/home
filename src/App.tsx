@@ -45,6 +45,7 @@ const RecipeLayoutIcon = ({ layout }: { layout: RecipeLayout }) => <svg viewBox=
 const PencilIcon = () => <svg className="pencil-icon" viewBox="0 0 40 40" aria-hidden="true" focusable="false"><rect x="5.5" y="10" width="24" height="24" rx="3.5" fill="none" stroke="currentColor" strokeWidth="3.2" /><path d="m19 21 13-13 4 4-13 13-5 1z" fill="currentColor" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /><path d="m29.5 7.5 4 4" stroke="#fff" strokeWidth="1.5" /></svg>;
 const WeekActionIcon = ({ action }: { action: 'add' | 'remove' }) => <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d={action === 'add' ? 'M12 5v14M5 12h14' : 'm7 7 10 10M17 7 7 17'} /></svg>;
 const SearchIcon = () => <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.8" cy="10.8" r="5.8" /><path d="m15.2 15.2 4 4" /></svg>;
+const ShareIcon = () => <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7.25 10v8.1a2.65 2.65 0 0 0 2.65 2.65h4.2a2.65 2.65 0 0 0 2.65-2.65V10" /><path d="M12 14.25V3.5M8.55 6.95 12 3.5l3.45 3.45" /></svg>;
 const PhotoIcon = () => <svg className="camera-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>;
 const DiceIcon = () => <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.5h13l2.5 4v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-12l2.5-4Z"/><path d="M3.5 7.5h17M10 5.5h4"/><circle cx="7.5" cy="16.5" r=".8" fill="currentColor"/><circle cx="12" cy="12" r=".8" fill="currentColor"/><circle cx="16.5" cy="9.5" r=".8" fill="currentColor"/><circle cx="16.5" cy="15.5" r=".8" fill="currentColor"/></svg>;
 // Ab dieser Strecke löst das seitliche Ziehen einer Tageskachel die Aktion aus.
@@ -233,6 +234,7 @@ export default function App() {
     localStorage.setItem('tellerTheme', theme);
   }, [theme]);
   const [newItem, setNewItem] = useState('');
+  const [receiptOpen, setReceiptOpen] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const [weekDirection, setWeekDirection] = useState<1 | -1>(1);
   const weekSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -298,6 +300,12 @@ export default function App() {
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const pendingSavesRef = useRef(0);
   const userId = session?.user.id;
+  useEffect(() => {
+    if (!receiptOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') setReceiptOpen(false); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [receiptOpen]);
   const applySharedData = (data: SharedAppData) => {
     currentDataRef.current = JSON.stringify(data);
     setRecipes(data.recipes as Recipe[]);
@@ -835,6 +843,85 @@ export default function App() {
     setWeekDirection(direction);
     setWeekOffset(value => value + direction);
   };
+  const openCurrentWeek = () => {
+    setWeekDirection(weekOffset < 0 ? 1 : -1);
+    setWeekOffset(0);
+    setView('plan');
+    setTargetDay(null);
+  };
+  const exportReceiptImage = () => {
+    const scale = 2;
+    const width = 720;
+    const padding = 54;
+    const itemsToExport = currentWeekItems;
+    const height = Math.max(580, 310 + itemsToExport.length * 48 + 112);
+    const canvas = document.createElement('canvas');
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.scale(scale, scale);
+    context.fillStyle = '#fffdf6';
+    context.fillRect(0, 0, width, height);
+    context.fillStyle = '#5968ad';
+    context.font = '800 18px system-ui, -apple-system, sans-serif';
+    context.textAlign = 'center';
+    context.fillText('M E A L Y', width / 2, 62);
+    context.fillStyle = '#20242a';
+    context.font = '700 38px system-ui, -apple-system, sans-serif';
+    context.fillText('Wocheneinkauf', width / 2, 112);
+    context.fillStyle = '#747983';
+    context.font = '16px ui-monospace, SFMono-Regular, Menlo, monospace';
+    context.fillText(`KW ${String(isoWeek(monday)).padStart(2, '0')} · ${dateText(monday)}`, width / 2, 143);
+    const line = (y: number) => { context.strokeStyle = '#a9adb4'; context.setLineDash([6, 6]); context.beginPath(); context.moveTo(padding, y); context.lineTo(width - padding, y); context.stroke(); context.setLineDash([]); };
+    line(178);
+    context.textAlign = 'left';
+    let y = 218;
+    if (itemsToExport.length) itemsToExport.forEach(item => {
+      const maxNameWidth = width - padding * 2 - 140;
+      let name = item.name;
+      while (context.measureText(name).width > maxNameWidth && name.length > 1) name = `${name.slice(0, -2)}…`;
+      context.fillStyle = item.done ? '#92969d' : '#30343a';
+      context.font = '16px ui-monospace, SFMono-Regular, Menlo, monospace';
+      context.fillText(name, padding, y);
+      context.textAlign = 'right';
+      context.font = '700 16px ui-monospace, SFMono-Regular, Menlo, monospace';
+      context.fillText(item.qty || '–', width - padding, y);
+      if (item.done) { context.strokeStyle = '#92969d'; context.beginPath(); context.moveTo(padding, y - 6); context.lineTo(padding + context.measureText(name).width, y - 6); context.stroke(); }
+      context.textAlign = 'left';
+      y += 48;
+    });
+    else { context.fillStyle = '#777c84'; context.font = '16px ui-monospace, SFMono-Regular, Menlo, monospace'; context.textAlign = 'center'; context.fillText('Noch keine Einträge', width / 2, y + 16); y += 62; context.textAlign = 'left'; }
+    line(y + 2);
+    context.fillStyle = '#50555e';
+    context.font = '16px ui-monospace, SFMono-Regular, Menlo, monospace';
+    context.fillText(`${itemsToExport.length} Artikel`, padding, y + 46);
+    context.textAlign = 'right';
+    context.font = '700 16px ui-monospace, SFMono-Regular, Menlo, monospace';
+    context.fillText(`${itemsToExport.filter(item => item.done).length} erledigt`, width - padding, y + 46);
+    canvas.toBlob(async blob => {
+      if (!blob) return;
+      const filename = `mealy-wochen-einkauf-kw-${String(isoWeek(monday)).padStart(2, '0')}.png`;
+      const receiptFile = new File([blob], filename, { type: 'image/png' });
+      const canOpenShareSheet = typeof navigator.share === 'function' && (typeof navigator.canShare !== 'function' || navigator.canShare({ files: [receiptFile] }));
+      if (canOpenShareSheet) {
+        try {
+          await navigator.share({ files: [receiptFile], title: 'Mealy Wocheneinkauf', text: 'Wocheneinkauf aus Mealy' });
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') return;
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  };
   const startWeekSwipe = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0) || (event.target as HTMLElement).closest('button,input,.weekday-card')) return;
     weekSwipeStartRef.current = { x: event.clientX, y: event.clientY };
@@ -912,7 +999,7 @@ export default function App() {
     <aside className="sidebar">
       <div className="brand"><BrandLogo /></div>
       <nav className="nav">
-        {(['plan', 'recipes', 'inspiration', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { setView(id); setTargetDay(null); }}>
+        {(['plan', 'recipes', 'inspiration', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={view === id ? 'active' : ''} onClick={() => { if (id === 'plan') openCurrentWeek(); else { setView(id); setTargetDay(null); } }}>
           <span className="ico"><NavIcon view={id} /></span><span className="nav-label">{['Wochenplan', 'Kochbuch', 'Inspiration', 'Einkaufsliste'][index]}</span>
         </button>)}
       </nav>
@@ -939,15 +1026,15 @@ export default function App() {
       {loadFailed && <section className="panel"><p>{dataError || 'Der Zugriff auf die gemeinsame Datenbank ist fehlgeschlagen.'} Prüfe die Verbindung und die Mitgliedschaft in `app_members`.</p><button className="primary" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Erneut versuchen</button></section>}
 
       {view === 'plan' && <section className="view visible">
-        <div className="weekbar"><span className="weeklabel">Wochenplan · KW {String(isoWeek(monday)).padStart(2, '0')}</span><button className="week-nav-button week-nav-button-prev" aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}><span className="week-nav-chevron" aria-hidden="true" /></button><button className="week-nav-button week-nav-button-next" aria-label="Nächste Woche" onClick={() => changeWeek(1)}><span className="week-nav-chevron week-nav-chevron-next" aria-hidden="true" /></button></div>
+        <div className="weekbar"><button type="button" className="weeklabel" aria-label="Zur aktuellen Woche springen" onClick={openCurrentWeek}>Wochenplan · KW {String(isoWeek(monday)).padStart(2, '0')}</button><button className="week-nav-button week-nav-button-prev" aria-label="Vorherige Woche" onClick={() => changeWeek(-1)}><span className="week-nav-chevron" aria-hidden="true" /></button><button className="week-nav-button week-nav-button-next" aria-label="Nächste Woche" onClick={() => changeWeek(1)}><span className="week-nav-chevron week-nav-chevron-next" aria-hidden="true" /></button></div>
         <div key={weekOffset} className={`weekday-grid week-swipe-in ${weekDirection === 1 ? 'from-next-week' : 'from-previous-week'}`} onPointerDown={startWeekSwipe} onPointerUp={finishWeekSwipe} onPointerCancel={() => { weekSwipeStartRef.current = null; }}>{dayNames.map((day, index) => {
-          const date = weekDate(index); const key = localDateKey(date); const dayMeals = (plans[key] || []).map(id => recipes.find(recipe => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe)); const dayLocked = Boolean(lockedDays[key]);
+          const date = weekDate(index); const key = localDateKey(date); const isToday = key === localDateKey(today); const dayMeals = (plans[key] || []).map(id => recipes.find(recipe => recipe.id === id)).filter((recipe): recipe is Recipe => Boolean(recipe)); const dayLocked = Boolean(lockedDays[key]);
           const swipeDx = daySwipe?.index === index ? daySwipe.dx : 0;
           return <div className="weekday-swipe" key={day}>
             {swipeDx > 0 && <div className={`weekday-swipe-action swipe-lock${swipeDx >= DAY_SWIPE_TRIGGER ? ' is-armed' : ''}`} aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d={dayLocked ? 'M8 10V7a4 4 0 0 1 7.4-2.2' : 'M8 10V7a4 4 0 0 1 8 0v3'} /></svg></div>}
             {swipeDx < 0 && <div className={`weekday-swipe-action swipe-random${swipeDx <= -DAY_SWIPE_TRIGGER ? ' is-armed' : ''}`} aria-hidden="true"><DiceIcon /></div>}
             <article className={`weekday-card${dayLocked ? ' day-locked' : ''}${daySwipe?.index === index ? ' is-swiping' : ''}`} style={swipeDx ? { transform: `translateX(${swipeDx}px)` } : undefined} data-drop-day={index} onPointerDown={event => startDaySwipe(event, index)} onPointerMove={moveDaySwipe} onPointerUp={endDaySwipe} onPointerCancel={endDaySwipe} onContextMenu={event => event.preventDefault()}>
-            <div className="weekday-title"><strong>{day}</strong><span>{dateText(date)}</span>{weekOffset === 0 && index === 0 && <span className="today-mark">DIESE WOCHE</span>}</div>
+            <div className="weekday-title">{isToday && <span className="today-mark today-mark-current" role="img" aria-label="Heute" />}<strong>{day}</strong><span>{dateText(date)}</span>{weekOffset === 0 && index === 0 && <span className="today-mark">DIESE WOCHE</span>}</div>
             <div className="weekday-row"><div className="weekday-content">{dayMeals.length ? dayMeals.map((recipe, mealIndex) => <div className="weekday-meal" style={{ background: recipe.color }} key={`${recipe.id}-${mealIndex}`}>
               <button className="meal-open" onClick={event => { if (suppressDayMealClickRef.current) { event.preventDefault(); suppressDayMealClickRef.current = false; return; } openRecipe(recipe); }}>{randomMealAnimation?.date === key && randomMealAnimation.recipeId === recipe.id ? <HyperText key={randomMealAnimation.id} text={recipe.name} /> : recipe.name}</button>
               <button className="weekday-remove" style={{ '--meal-color': recipe.color } as CSSProperties} aria-label={`${recipe.name} entfernen`} onClick={() => removeMeal(key, mealIndex)}><WeekActionIcon action="remove" /></button>
@@ -968,18 +1055,30 @@ export default function App() {
       {view === 'inspiration' && <section className="view visible inspiration-view"><InspirationGrid recipes={recipes} onSelect={openRecipe} /></section>}
 
       {view === 'shopping' && <section className="shopping-list">
-        <header className="shopping-header"><div><p>Diese Woche</p><h2>Aktueller Wocheneinkauf</h2></div><span className="shopping-count"><b>{currentWeekItems.filter(item => item.done).length}</b> / {currentWeekItems.length}</span></header>
+        <header className="shopping-header"><div><p>Diese Woche</p><h2>Aktueller Wocheneinkauf</h2></div><div className="shopping-header-actions"><button type="button" className="shopping-share" onClick={() => setReceiptOpen(true)} aria-label="Einkaufsliste teilen" aria-haspopup="dialog"><ShareIcon /></button><span className="shopping-count"><b>{currentWeekItems.filter(item => item.done).length}</b> / {currentWeekItems.length}</span></div></header>
         <div className="shopping-progress" aria-label={`${currentWeekItems.filter(item => item.done).length} von ${currentWeekItems.length} erledigt`}><i style={{ width: `${currentWeekItems.length ? currentWeekItems.filter(item => item.done).length / currentWeekItems.length * 100 : 0}%` }} /></div>
         {currentWeekItems.length ? <div className="shopping-groups">{[...new Set(currentWeekItems.map(item => item.cat || 'Sonstiges'))].map(category => <section className="shopping-group" key={category}>
           <h3>{category}</h3><div className="shopping-group-items">{currentWeekItems.map((item, index) => item.cat === category || (!item.cat && category === 'Sonstiges') ? <label className={`shopping-item${item.done ? ' done' : ''}`} key={`${item.key || item.name}-${index}`}>
             <input type="checkbox" checked={item.done} onChange={() => toggleItem(index)} /><span className="shopping-item-name">{item.name}</span><span className="shopping-item-qty">{item.qty || ''}</span>{!item.auto && <button type="button" className="shopping-item-remove" aria-label={`${item.name} entfernen`} onClick={event => { event.preventDefault(); removeItem(index); }}><WeekActionIcon action="remove" /></button>}
           </label> : null)}</div>
-        </section>)}</div> : <div className="shopping-empty">Noch keine Einkäufe. Geplante Rezepte ergänzen ihre Zutaten automatisch.</div>}
+        </section>)}</div> : null}
         {currentWeekItems.some(item => !item.auto && item.done) && <button type="button" className="shopping-clear-done" onClick={clearDoneItems}>Erledigte eigene Einträge entfernen</button>}
-        <form className="shopping-add" onSubmit={addShoppingItem}><input aria-label="Zutat hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Noch etwas hinzufügen …" /><button type="submit" aria-label="Zutat hinzufügen"><span className="shopping-add-icon" aria-hidden="true" /></button></form>
+        <form className="shopping-add" onSubmit={addShoppingItem}><input aria-label="Manuell hinzufügen" value={newItem} onChange={event => setNewItem(event.target.value)} placeholder="Manuell hinzufügen" /><button type="submit" aria-label="Manuell hinzufügen"><span className="shopping-add-icon" aria-hidden="true" /></button></form>
       </section>}
     </main>
-    <nav className="mobile-nav" onPointerMove={handleDockPointerMove} onPointerLeave={resetDockPointer}>{(['plan', 'recipes', 'inspiration', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={`mobile-nav-item${view === id ? ' active' : ''}`} onClick={() => { setView(id); setTargetDay(null); }}><b className="dock-icon"><NavIcon view={id} /></b>{['Woche', 'Kochbuch', 'Inspiration', 'Liste'][index]}</button>)}</nav>
+    <nav className="mobile-nav" onPointerMove={handleDockPointerMove} onPointerLeave={resetDockPointer}>{(['plan', 'recipes', 'inspiration', 'shopping'] as const).map((id, index) => <button key={id} data-view={id} className={`mobile-nav-item${view === id ? ' active' : ''}`} onClick={() => { if (id === 'plan') openCurrentWeek(); else { setView(id); setTargetDay(null); } }}><b className="dock-icon"><NavIcon view={id} /></b>{['Woche', 'Kochbuch', 'Inspiration', 'Liste'][index]}</button>)}</nav>
+
+    {receiptOpen && <div className="receipt-backdrop" role="presentation" onClick={() => setReceiptOpen(false)}><section className="receipt-dialog" role="dialog" aria-modal="true" aria-labelledby="receipt-title" onClick={event => event.stopPropagation()}>
+      <div className="receipt-printer" aria-hidden="true"><span /><i /><span /></div>
+      <article className="receipt-paper">
+        <header className="receipt-head"><p>MEALY</p><h2 id="receipt-title">Wocheneinkauf</h2><span>KW {String(isoWeek(monday)).padStart(2, '0')} · {dateText(monday)}</span></header>
+        <div className="receipt-rule" aria-hidden="true" />
+        <ul className="receipt-items">{currentWeekItems.length ? currentWeekItems.map((item, index) => <li className={item.done ? 'is-done' : ''} key={`${item.key || item.name}-${index}`} style={{ '--receipt-order': index } as CSSProperties}><span>{item.name}</span><b>{item.qty || '–'}</b></li>) : <li className="receipt-empty">Noch keine Einträge</li>}</ul>
+        <div className="receipt-rule" aria-hidden="true" />
+        <footer className="receipt-foot"><span>{currentWeekItems.length} Artikel</span><b>{currentWeekItems.filter(item => item.done).length} erledigt</b></footer>
+      </article>
+      <div className="receipt-actions"><button type="button" className="receipt-cancel" onClick={() => setReceiptOpen(false)}>Schließen</button><button type="button" className="receipt-export" onClick={exportReceiptImage}><ShareIcon />Exportieren</button></div>
+    </section></div>}
 
     {scheduleNotice && <div className="schedule-toast" role="status" aria-live="polite"><span className="schedule-toast-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5 12 4.2 4.2L19 6.5" /></svg></span><span>{scheduleNotice}</span></div>}
 
