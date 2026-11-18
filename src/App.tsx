@@ -16,7 +16,7 @@ type Recipe = {
 };
 type Item = { name: string; done: boolean; qty?: string; cat?: string; auto?: boolean; key?: string };
 type ModalMode = 'view' | 'edit' | 'new' | null;
-type AppTheme = 'light' | 'dark';
+type AppTheme = 'light' | 'dark' | 'draft';
 
 const defaults: Recipe[] = [
   { id: 1, name: 'Zitronen-Ricotta-Pasta', emoji: '', color: '#b5c5e8', time: '25 min', tag: 'Vegetarisch', ingredients: [['Pasta', '300 g'], ['Ricotta', '150 g'], ['Zitrone', '1 Stück'], ['Babyspinat', '100 g'], ['Parmesan', '50 g']] },
@@ -29,7 +29,7 @@ const defaults: Recipe[] = [
 const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 const monthShort = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'];
 const colors = ['#b5c5e8', '#ffb28f', '#aec8fb', '#eca9c4', '#c9b99f', '#b4b6c2'];
-const BrandLogo = () => <img className="brand-logo" src={`${import.meta.env.BASE_URL}mealy-logo.png`} alt="mealy" />;
+const BrandLogo = () => <span className="brand-lockup" aria-label="mealy"><span className="brand-logo-symbol" aria-hidden="true"><img src={`${import.meta.env.BASE_URL}mealy-logo.png`} alt="" /></span><span className="brand-wordmark">mealy</span></span>;
 type ViewId = 'plan' | 'recipes' | 'inspiration' | 'shopping';
 type RecipeLayout = 'list' | 'card';
 const NavIcon = ({ view }: { view: ViewId }) => <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -197,6 +197,10 @@ function nearestArcItem(layout: ArcLayout, x: number, y: number): number | null 
   return nearest;
 }
 export default function App() {
+  const [introVisible, setIntroVisible] = useState(true);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setIntroVisible(false);
+  }, []);
   const [view, setView] = useState<ViewId>(() => {
     const savedView = initial<string>('tellerView', 'plan');
     return (['plan', 'recipes', 'inspiration', 'shopping'] as const).includes(savedView as ViewId) ? savedView as ViewId : 'plan';
@@ -225,8 +229,11 @@ export default function App() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [toolbarActionsExpanded, setToolbarActionsExpanded] = useState(false);
   const [theme, setTheme] = useState<AppTheme>(() => {
-    const savedTheme = initial<AppTheme | null>('tellerTheme', null);
-    if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
+    const savedTheme = (() => {
+      try { return localStorage.getItem('tellerTheme')?.replace(/^"|"$/g, '') as AppTheme | null; }
+      catch { return null; }
+    })();
+    if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'draft') return savedTheme;
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
   useEffect(() => {
@@ -989,6 +996,9 @@ export default function App() {
   </div>;
 
   return <div className="shell">
+    {introVisible && <div className="app-intro" aria-hidden="true" onAnimationEnd={event => {
+      if (event.animationName === 'app-intro-exit') setIntroVisible(false);
+    }}><span>mealy</span></div>}
     <aside className="sidebar">
       <div className="brand"><BrandLogo /></div>
       <nav className="nav">
@@ -1007,7 +1017,13 @@ export default function App() {
           {syncMenuOpen && <button className="sync-dismiss" aria-label="Menü schließen" tabIndex={-1} onClick={() => setSyncMenuOpen(false)} />}
           <div ref={syncMenuRef} className={`sync-popover${syncMenuOpen ? ' is-open' : ''}`} role="menu" aria-label="Konto und Synchronisierung" aria-hidden={!syncMenuOpen} onKeyDown={handleSyncMenuKeyDown}>
             <div className="sync-popover-status" role="status" aria-live="polite" aria-label={saving ? 'Änderungen werden gespeichert' : 'Änderungen werden automatisch gespeichert'}><span className={`sync-status-dot${saving ? ' is-saving' : ''}`} /><span>Automatisches Speichern aktiv</span></div>
-            <div className="theme-mode-row"><div><b>Darstellung</b><small>{theme === 'dark' ? 'Dunkelmodus' : 'Hellmodus'}</small></div><button type="button" role="menuitemcheckbox" tabIndex={-1} className={`theme-switch${theme === 'dark' ? ' is-dark' : ''}`} aria-label={theme === 'dark' ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'} aria-checked={theme === 'dark'} onClick={() => setTheme(current => current === 'dark' ? 'light' : 'dark')}><span className="theme-switch-sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg></span><span className="theme-switch-moon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 15.3A8.4 8.4 0 0 1 8.7 4 8.5 8.5 0 1 0 20 15.3Z" /></svg></span><span className="theme-switch-thumb" aria-hidden="true" /></button></div>
+            <div className="theme-mode-row">
+              <span className="theme-mode-label">Ansicht</span>
+              <div className="theme-slider" data-theme={theme} role="radiogroup" aria-label="Farbdarstellung">
+                <span className="theme-slider-thumb" aria-hidden="true" />
+                {([['light', 'Hell'], ['dark', 'Dunkel'], ['draft', 'Pink']] as const).map(([value, label]) => <button key={value} type="button" role="radio" tabIndex={-1} className={theme === value ? 'is-active' : ''} aria-checked={theme === value} onClick={() => setTheme(value)}>{label}</button>)}
+              </div>
+            </div>
             <div className="sync-people-heading" role="presentation">Angemeldet</div>
             <div className="sync-people">{onlineUsers.length ? onlineUsers.map(person => <div className="sync-person" role="menuitem" aria-disabled="true" tabIndex={-1} key={person.id}><span className="sync-person-avatar">{person.name.trim().charAt(0).toLocaleUpperCase('de-DE')}</span><span>{person.name}</span><i aria-label="Online" /></div>) : <div className="sync-empty" role="presentation">Niemand sonst gerade online</div>}</div>
             <div className="sync-separator" role="separator" />
